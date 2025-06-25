@@ -31,19 +31,21 @@
       <clipPath id="viewport-clip" clipPathUnits="userSpaceOnUse">
         <rect x="${MARGIN}" y="${MARGIN}" width="${MAP_W}" height="${MAP_H}"/>
       </clipPath>
-      <g id="map-content" clip-path="url(#viewport-clip)">
-        <path id="shop-a" data-label="Electronics Hub" fill="#d1d5db" d="M 80 80 L 300 80 L 300 400 L 80 400 Z"/>
-        <path id="shop-b" data-label="Coffee Corner"   fill="#d1d5db" d="M 320 80 L 600 80 L 600 250 L 320 250 Z"/>
-        <path id="shop-c" data-label="Book Store"      fill="#d1d5db" d="M 620 80 L 920 80 L 920 400 L 620 400 Z"/>
-        <path id="shop-d" data-label="Fashion Outlet"  fill="#d1d5db" d="M 80 420 L 450 420 L 450 870 L 80 870 Z"/>
-        <path id="shop-e" data-label="Toy World"        fill="#d1d5db" d="M 470 420 L 920 420 L 920 870 L 470 870 Z"/>
-        <g id="handles-layer"></g>
-        <polyline id="draw-preview" class="draw-preview" visibility="hidden"/>
-        <g id="distance-layer"></g>
-        <g id="markers-layer"></g>
-        <g id="lines-layer"></g>
-        <line id="line-preview" stroke="#2563eb" stroke-width="10" stroke-dasharray="6 4" fill="none" visibility="hidden" />
-      </g>
+      <g id="viewport" clip-path="url(#viewport-clip)">
+        <g id="map-content">
+          <path id="shop-a" data-label="Electronics Hub" fill="#d1d5db" d="M 80 80 L 300 80 L 300 400 L 80 400 Z"/>
+          <path id="shop-b" data-label="Coffee Corner"   fill="#d1d5db" d="M 320 80 L 600 80 L 600 250 L 320 250 Z"/>
+          <path id="shop-c" data-label="Book Store"      fill="#d1d5db" d="M 620 80 L 920 80 L 920 400 L 620 400 Z"/>
+          <path id="shop-d" data-label="Fashion Outlet"  fill="#d1d5db" d="M 80 420 L 450 420 L 450 870 L 80 870 Z"/>
+          <path id="shop-e" data-label="Toy World"        fill="#d1d5db" d="M 470 420 L 920 420 L 920 870 L 470 870 Z"/>
+          <g id="handles-layer"></g>
+          <polyline id="draw-preview" class="draw-preview" visibility="hidden"/>
+          <g id="distance-layer"></g>
+          <g id="markers-layer"></g>
+          <g id="lines-layer"></g>
+          <line id="line-preview" stroke="#2563eb" stroke-width="10" stroke-dasharray="6 4" fill="none" visibility="hidden" />
+          </g>
+        </g>
     </svg>
   </div>
 
@@ -1208,6 +1210,7 @@ const cx = MARGIN + (MAP_W - 2*MARGIN)/2;
 const cy = MARGIN + (MAP_H - 2*MARGIN)/2;
 
 function applyTransform() {
+  const mapContent = document.querySelector("#map-content");
   mapContent.setAttribute(
     "transform",
     // ① pan (screen-space)           ② scale about centre point
