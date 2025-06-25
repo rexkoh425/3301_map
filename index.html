@@ -622,7 +622,9 @@ function drawLine(from, to) {
   ghostLine.setAttribute('y1', from.y);
   ghostLine.setAttribute('x2', to.x);
   ghostLine.setAttribute('y2', to.y);
-  ghostLine.setAttribute('visibility', 'hidden');
+  ghostLine.setAttribute('stroke', 'transparent');   // clickable hit-box
+  ghostLine.setAttribute('stroke-width', 20);        // wide enough to grab
+  ghostLine.setAttribute('pointer-events', 'stroke');
   ghostLine._dots = dots; // store reference for manipulation
 
   ghostLine.addEventListener('click', (e) => {
