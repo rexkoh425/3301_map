@@ -184,7 +184,7 @@ function clearHandles(){handlesLayer.innerHTML='';}
 function renderHandles(el){clearHandles();pathToVertices(el.getAttribute('d')).forEach((v,i)=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',v[0]);c.setAttribute('cy',v[1]);c.setAttribute('r',10);c.classList.add('handle');c.dataset.idx=i;handlesLayer.appendChild(c);c.addEventListener('pointerdown',startVertexDrag);});}
 function deleteZone(){
   if (!currentZone) return;
-  svg.removeChild(currentZone);
+  currentZone.remove();
   currentZone = null;
   clearHandles();
   deleteBtn.disabled = true;
@@ -542,7 +542,24 @@ function cancelDraw(){
   addBtn.disabled=false;cancelBtn.disabled=true;
   setStatus('<em>Select a zone to view details.</em>');
 } 
-function finishDraw(){if(drawVerts.length<3){cancelDraw();return;}const id=`zone-${zoneCounter++}`;const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('id',id);p.setAttribute('data-label',id);p.setAttribute('fill','#d1d5db');p.setAttribute('d',verticesToPath(drawVerts));svg.insertBefore(p,handlesLayer);p.addEventListener('click',()=>selectZone(p));p.addEventListener('pointerdown',startZoneMove);cancelDraw();selectZone(p);} 
+function finishDraw(){
+  if(drawVerts.length<3){
+    cancelDraw();
+    return;
+  }
+  
+  const id=`zone-${zoneCounter++}`;
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('id',id);
+  p.setAttribute('data-label',id);
+  p.setAttribute('fill','#d1d5db');
+  p.setAttribute('d',verticesToPath(drawVerts));
+  mapContent.insertBefore(p, handlesLayer);
+  p.addEventListener('click',()=>selectZone(p));
+  p.addEventListener('pointerdown',startZoneMove);
+  cancelDraw();
+  selectZone(p);
+} 
 function onSvgLeftClick(evt){if(dragMode!=='draw'||evt.button!==0)return;const p=svgPoint(evt);drawVerts.push([p.x,p.y]);previewLine.setAttribute('points',drawVerts.map(v=>v.join(',')).join(' '));} 
 function onSvgRightClick(evt){if(dragMode==='draw'){evt.preventDefault();finishDraw();}} 
 function drawLine(from, to) {
@@ -900,7 +917,7 @@ async function importJSON(file) {
     p.dataset.label = z.label;
     p.setAttribute('fill', z.color || '#d1d5db');
     p.setAttribute('d', verticesToPath(z.vertices));
-    svg.insertBefore(p, handlesLayer);
+    mapContent.insertBefore(p, handlesLayer);
     p.addEventListener('click',        () => selectZone(p));
     p.addEventListener('pointerdown',  startZoneMove);
   });
