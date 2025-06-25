@@ -168,7 +168,13 @@ function refreshMarkerDropdowns() {
   document.getElementById('from-marker').innerHTML = '<option value="">--</option>' + opts;
   document.getElementById('to-marker').innerHTML   = '<option value="">--</option>' + opts;
 }
-function svgPoint(evt){const pt=svg.createSVGPoint();pt.x=evt.clientX;pt.y=evt.clientY;return pt.matrixTransform(svg.getScreenCTM().inverse());}
+function svgPoint(evt){
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX;
+  pt.y = evt.clientY;
+  // use the current matrix of <g id="map-content">
+  return pt.matrixTransform(mapContent.getScreenCTM().inverse());
+}
 function translatePath(el,dx,dy){const pieces=el.getAttribute('d').match(/[a-zA-Z][^a-zA-Z]*/g);const rebuilt=pieces.map(seg=>{const type=seg.trim()[0];const nums=seg.slice(1).trim();if(!nums)return seg;const vals=nums.split(/[ ,]+/).filter(Boolean).map(Number);if(type==='M'||type==='L'){for(let i=0;i<vals.length;i+=2){vals[i]+=dx;vals[i+1]+=dy;}}else if(type==='H'){vals.forEach((v,i)=>vals[i]+=dx);}else if(type==='V'){vals.forEach((v,i)=>vals[i]+=dy);}return type+' '+vals.join(' ')});el.setAttribute('d',rebuilt.join(' '));}
 function pathToVertices(d){const nums=d.replace(/[MLZmlz]/g,'').trim().split(/[ ,]+/).filter(Boolean).map(Number);const verts=[];for(let i=0;i<nums.length;i+=2) verts.push([nums[i],nums[i+1]]);return verts;}
 function verticesToPath(verts){return verts.map((v,i)=>(i?'L':'M')+' '+v[0]+' '+v[1]).join(' ')+' Z';}
@@ -346,6 +352,7 @@ function startVertexDrag(evt) {
 }
 function onPointerMove(evt) {
 
+  if (panning) return;
   const p = mapPoint(evt);
 
   if (dragMode === 'move') {
@@ -1224,19 +1231,17 @@ svg.addEventListener("pointerdown", (e) => {
 });
 svg.addEventListener("pointermove", (e) => {
   if (!panning) return;                  // ← only pan while mid-button held
-    const now = mapPoint(e);               // map-space pointer
-    panX += now.x - lastSVG.x;
-    panY += now.y - lastSVG.y;
-    applyTransform();
-    lastSVG = now;    
+  e.stopImmediatePropagation();
+  const m = mapContent.getScreenCTM();   // current transform matrix
+  panX += e.movementX / m.a;             // m.a and m.d are the X/Y scales
+  panY += e.movementY / m.d;
+  applyTransform();  
 });
-svg.addEventListener("pointerup", (e) => {
+svg.addEventListener("pointerup", () => {          // middle-button released
   panning = false;
-  svg.releasePointerCapture(e.pointerId);
 });
-svg.addEventListener("pointercancel", (e) => {
+svg.addEventListener("pointercancel", () => {      // capture lost
   panning = false;
-  svg.releasePointerCapture(e.pointerId);
 });
 
 
