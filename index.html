@@ -97,7 +97,7 @@
       <button id="delete-marker-btn" class="secondary">Delete Marker</button>
       <button id="cancel-btn" class="secondary" disabled>Cancel</button>
       <button id="export-paths-btn" class="secondary">Export Paths</button>
-
+      <button id="textbox-btn" class="secondary">Add Text</button>
       <label style="display:block;margin-top:.25rem">
         Icon:
         <select id="marker-icon"></select>
@@ -156,6 +156,7 @@ let markerMode = false;
 const statusMsg = document.getElementById('status-msg');
 let deleteLineMode = false;
 let markerDeleteMode = false;
+let textMode = false;
 const ICONS = [
   { name: 'Lift',      url: 'icons/lift.png'      },
   { name: 'Restroom',  url: 'icons/restroom.png'  },
@@ -485,6 +486,23 @@ function onPointerMove(evt) {
     }
   }
 
+  else if (dragMode === 'textbox' && currentHandle) {
+    const dx = p.x - startPt.x;
+    const dy = p.y - startPt.y;
+
+    // update background rect
+    const r = currentHandle.querySelector('rect');
+    r.setAttribute('x', +r.getAttribute('x') + dx);
+    r.setAttribute('y', +r.getAttribute('y') + dy);
+
+    // update the text
+    const t = currentHandle.querySelector('text');
+    t.setAttribute('x', +t.getAttribute('x') + dx);
+    t.setAttribute('y', +t.getAttribute('y') + dy);
+
+    startPt = p;
+  }
+
 
   if (dragMode === 'line-handle' && currentHandle) {
   const raw = svgPoint(evt);
@@ -511,7 +529,8 @@ function endDrag(evt) {
     (dragMode === 'move'   && dragButton === 1) ||   // zone
     (dragMode === 'vertex' && dragButton === 0) ||   // vertex
     (dragMode === 'line'   && dragButton === 1) ||     // line  ← add this clause
-    (dragMode === 'line-handle' && dragButton === 0)
+    (dragMode === 'line-handle' && dragButton === 0) ||
+    (dragMode === 'textbox'     && dragButton === 1)
   ) {
     dragMode   = null;
     dragButton = null;
@@ -909,13 +928,21 @@ function exportJSON () {
     icon   : c.dataset.icon  || ''
   }));
 
+  const textboxes = [...document.querySelectorAll('.map-textbox')].map(g => {
+    const t = g.querySelector('text');
+    return {
+      x    : +t.getAttribute('x'),
+      y    : +t.getAttribute('y'),
+      text : t.textContent
+    };
+  });
   /* ---------- editor settings ---------- */
   const settings = {
     showLines : document.getElementById('toggle-lines').checked   // <- see tip below
   };
 
   /* ---------- file ---------- */
-  const data = { zones, lines, markers, settings };
+  const data = { zones, lines, markers, textboxes, settings };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type : 'application/json' });
   const a    = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -984,6 +1011,38 @@ async function importJSON(file) {
     t.setAttribute('fill', '#111');
     t.textContent = m.label;
     document.getElementById('markers-layer').appendChild(t);
+  });
+
+  /* ---------- restore text boxes ---------- */
+  (data.textboxes || []).forEach(tb => {
+    const g = document.createElementNS(svg.namespaceURI, 'g');
+    g.classList.add('map-textbox');
+
+    const t = document.createElementNS(svg.namespaceURI, 'text');
+    t.setAttribute('x', tb.x);
+    t.setAttribute('y', tb.y);
+    t.setAttribute('font-size', '16');
+    t.setAttribute('fill', '#111');
+    t.textContent = tb.text;
+    g.appendChild(t);
+
+    document.getElementById('markers-layer').appendChild(g);
+
+    /* drag with middle button */
+    g.addEventListener('pointerdown', ev => {
+      if (ev.button !== 1) return;
+      ev.stopPropagation();
+      dragMode      = 'textbox';
+      dragButton    = 1;
+      currentHandle = g;
+      startPt       = mapPoint(ev);
+      g.setPointerCapture(ev.pointerId);
+    });
+
+    /* delete in “Delete Marker” mode */
+    g.addEventListener('click', () => {
+      if (markerDeleteMode) g.remove();
+    });
   });
 
   /* ---------- restore lines + dotted look ---------- */
@@ -1078,7 +1137,44 @@ svg.addEventListener('mousedown',onSvgLeftClick);
 svg.addEventListener('contextmenu',onSvgRightClick);
 svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
+  
+  if (textMode && e.button === 0) {
+    const txt = prompt("Text to display:");
+    if (!txt) { textMode = false; return; }
 
+    const g = document.createElementNS(svg.namespaceURI, 'g');
+    g.classList.add('map-textbox');
+    
+    const t = document.createElementNS(svg.namespaceURI, 'text');
+    t.setAttribute('x', pt.x);
+    t.setAttribute('y', pt.y);
+    t.setAttribute('font-size', '16');
+    t.setAttribute('fill', '#111');
+    t.textContent = txt;
+    
+    g.appendChild(t);
+    document.getElementById('markers-layer').appendChild(g);
+
+    /* make it draggable with middle-button (reuse your current pattern) */
+    g.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 1) return;+      
+      ev.stopPropagation();
+      dragMode = 'textbox';
+     dragButton = 1;
+     currentHandle = g;                          // recycle this var
+      startPt = mapPoint(ev);
+      g.setPointerCapture(ev.pointerId);
+    });
+
+    /* allow deletion when markerDeleteMode is active */
+    g.addEventListener('click', () => {
+      if (markerDeleteMode) g.remove();
+    });
+
+    textMode = false;
+    setStatus('<em>Select a zone to view details.</em>');
+    return;                         // don’t run marker / line logic below
+  }
   // 🔶 1. Handle placing a marker
   if (markerMode && e.button === 0) {
     const label = prompt("Enter marker label:");
@@ -1258,6 +1354,10 @@ document.getElementById('fill-color').addEventListener('input', (e) => {
     currentZone.setAttribute('fill', color);        // Optional: for export
     currentZone.style.fill = color;                 // Force visual update
   }
+});
+document.getElementById('textbox-btn').addEventListener('click', () => {
+  textMode = true;
+  setStatus('<strong>Click on the map to place a text box</strong>');
 });
 
 
