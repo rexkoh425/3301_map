@@ -96,6 +96,8 @@
       <button id="marker-btn" class="secondary">Add Marker</button><br/>
       <button id="delete-marker-btn" class="secondary">Delete Marker</button>
       <button id="cancel-btn" class="secondary" disabled>Cancel</button>
+      <button id="export-paths-btn" class="secondary">Export Paths</button>
+
       <label style="display:block;margin-top:.25rem">
         Icon:
         <select id="marker-icon"></select>
@@ -118,19 +120,27 @@ const metaBox   = document.getElementById('zone-meta');
 const deleteBtn = document.getElementById('delete-btn');
 const distanceLayer = document.getElementById('distance-layer');
 const lineBtn = document.getElementById('line-btn');
-document.getElementById('fill-color').addEventListener('input', (e) => {
-  if (currentZone) {
-    const color = e.target.value;
-    currentZone.setAttribute('fill', color);        // Optional: for export
-    currentZone.style.fill = color;                 // Force visual update
-  }
-});
+const mapContent = document.getElementById("map-content");
+
+
+const clip = svg.querySelector("#viewport-clip rect");
+const frame = svg.querySelector("#frame");
 
 
 const MAP_W   = 3000;    // <-- change this one number to grow / shrink the map
 const MAP_H   = 2000;    //                 ″
 const MARGIN  = 50;      // frame thickness on every side
 
+
+let zoom = 1;           // current zoom factor
+let panX = 0;           // accumulated pan offset
+let panY = 0;
+let panning = false;    // middle-button drag flag
+let lastSVG = { x: 0, y: 0 };   // last mouse position in SVG coords
+
+// centre of the 1400 × 900 viewport rectangle
+const cx = MARGIN + (MAP_W - 2*MARGIN)/2;
+const cy = MARGIN + (MAP_H - 2*MARGIN)/2;
 let zoneCounter = 1 + svg.querySelectorAll('path').length;
 let currentZone = null;
 let dragMode=null; // move | vertex | draw | null
@@ -836,6 +846,21 @@ function drawDottedLine(from, to) {
     layer.appendChild(dot);
   }
 }
+function mapPoint(evt){
+   const pt = svg.createSVGPoint();
+  pt.x = evt.clientX;            //  << load screen coords
+  pt.y = evt.clientY;
+   return pt.matrixTransform( mapContent.getScreenCTM().inverse() );
+}
+function applyTransform() {
+  const mapContent = document.querySelector("#map-content");
+  mapContent.setAttribute(
+    "transform",
+    // ① pan (screen-space)           ② scale about centre point
+    `translate(${panX},${panY}) translate(${cx},${cy}) scale(${zoom}) translate(${-cx},${-cy})`
+  );
+}
+
 
 
 function exportJSON () {
@@ -849,7 +874,7 @@ function exportJSON () {
     return {
       id    : p.id,
       label : p.dataset.label || '',
-      color : window.getComputedStyle(p).fill,
+      color : p.style.fill || window.getComputedStyle(p).fill,  // prefer inline
       vertices,
       edge_lengths_m
     };
@@ -917,7 +942,7 @@ async function importJSON(file) {
     const p = document.createElementNS(svg.namespaceURI, 'path');
     p.id = z.id;
     p.dataset.label = z.label;
-    p.setAttribute('fill', z.color || '#d1d5db');
+    if (z.color) p.style.fill = z.color;   
     p.setAttribute('d', verticesToPath(z.vertices));
     mapContent.insertBefore(p, handlesLayer);
     p.addEventListener('click',        () => selectZone(p));
@@ -1014,6 +1039,29 @@ async function importJSON(file) {
   renderAllDistances();
   refreshMarkerDropdowns();
   setStatus('<em>Map imported successfully.</em>');
+}
+function generateAllPaths() {
+  // 1. list all marker labels that exist right now
+  const labels = [...document.querySelectorAll('#markers-layer circle')]
+                 .map(c => c.dataset.label)
+                 .filter(Boolean);
+
+  // 2. build every ordered pair  (A ➜ B,   B ➜ A)
+  const routes = [];
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = 0; j < labels.length; j++) {
+      if (i === j) continue;                     // skip A ➜ A
+      const path = shortestPath(labels[i], labels[j]);
+      if (path) {                               // reachable?
+        routes.push({
+          Source      : labels[i],
+          Destination : labels[j],
+          Passby      : path                    // full label sequence
+        });
+      }
+    }
+  }
+  return routes;
 }
 
 
@@ -1194,50 +1242,36 @@ document.getElementById('delete-marker-btn').addEventListener('click', () => {
   btn.classList.toggle('active', markerDeleteMode);
   btn.textContent = markerDeleteMode ? 'Cancel Marker Delete' : 'Delete Marker';
 });
+document.getElementById('export-paths-btn').addEventListener('click', () => {
+  const data = generateAllPaths();
+  const blob = new Blob([JSON.stringify(data, null, 2)],
+                        { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'all_paths.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+document.getElementById('fill-color').addEventListener('input', (e) => {
+  if (currentZone) {
+    const color = e.target.value;
+    currentZone.setAttribute('fill', color);        // Optional: for export
+    currentZone.style.fill = color;                 // Force visual update
+  }
+});
 
 
 /* ---------- apply geometry constants to the SVG once ---------- */
 svg.setAttribute("viewBox", `0 0 ${MAP_W} ${MAP_H}`);
-
-// frame rectangle
-const frame = svg.querySelector("#frame");        // <rect id="frame">
 frame.setAttribute("x",      MARGIN);
 frame.setAttribute("y",      MARGIN);
 frame.setAttribute("width",  MAP_W - 2*MARGIN);
 frame.setAttribute("height", MAP_H - 2*MARGIN);
-
-// clip-path rectangle
-const clip = svg.querySelector("#viewport-clip rect");
 clip.setAttribute("x",      MARGIN);
 clip.setAttribute("y",      MARGIN);
 clip.setAttribute("width",  MAP_W - 2*MARGIN);
 clip.setAttribute("height", MAP_H - 2*MARGIN);
 
-
-
-/* ---------- zoom + pan setup (single source of truth) ---------- */
-const mapContent = document.getElementById("map-content");
-
-let zoom = 1;           // current zoom factor
-let panX = 0;           // accumulated pan offset
-let panY = 0;
-let panning = false;    // middle-button drag flag
-let lastSVG = { x: 0, y: 0 };   // last mouse position in SVG coords
-
-// centre of the 1400 × 900 viewport rectangle
-const cx = MARGIN + (MAP_W - 2*MARGIN)/2;
-const cy = MARGIN + (MAP_H - 2*MARGIN)/2;
-
-function applyTransform() {
-  const mapContent = document.querySelector("#map-content");
-  mapContent.setAttribute(
-    "transform",
-    // ① pan (screen-space)           ② scale about centre point
-    `translate(${panX},${panY}) translate(${cx},${cy}) scale(${zoom}) translate(${-cx},${-cy})`
-  );
-}
-
-/* ---------- scroll-wheel zoom ---------- */
 svg.addEventListener("wheel", (e) => {
   e.preventDefault();
   const dz = e.deltaY > 0 ? -0.1 : 0.1;           // scroll-up = zoom in
@@ -1267,12 +1301,7 @@ svg.addEventListener("pointercancel", () => {      // capture lost
 });
 
 
-function mapPoint(evt){
-   const pt = svg.createSVGPoint();
-  pt.x = evt.clientX;            //  << load screen coords
-  pt.y = evt.clientY;
-   return pt.matrixTransform( mapContent.getScreenCTM().inverse() );
-}
+
 
 
 
