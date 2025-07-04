@@ -209,6 +209,10 @@ let lastSVG = { x: 0, y: 0 };   // last mouse position in SVG coords
 // centre of the 1400 × 900 viewport rectangle
 const cx = MARGIN + (MAP_W - 2*MARGIN)/2;
 const cy = MARGIN + (MAP_H - 2*MARGIN)/2;
+
+const MARKER_SIZE   = 800;   // icon bitmap in px
+const MARKER_RADIUS = 12;   // the orange snap circle
+
 let zoneCounter = 1 + svg.querySelectorAll('path').length;
 let currentZone = null;
 let dragMode=null; // move | vertex | draw | null
@@ -1144,7 +1148,7 @@ async function importJSON(file) {
 
   /* ---------- restore markers ---------- */
   (data.markers || []).forEach(m => {
-    const SIZE = 40;
+    const SIZE = MARKER_SIZE;
 
     const marker = document.createElementNS(svg.namespaceURI, 'circle');
     marker.setAttribute('cx', m.cx);
@@ -1373,7 +1377,7 @@ svg.addEventListener('pointerup', (e) => {
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     marker.setAttribute('cx', pt.x);
     marker.setAttribute('cy', pt.y);
-    marker.setAttribute('r', 10);
+    marker.setAttribute('r', MARKER_RADIUS);
     marker.setAttribute('fill', '#f59e0b');
     marker.setAttribute('stroke', '#000');
     marker.setAttribute('stroke-width', 2);
