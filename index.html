@@ -395,7 +395,53 @@ function snapToSegment(px, py, ax, ay, bx, by) {
 
   return { x: ax + t*vx, y: ay + t*vy };
 }
+function extrudeZones(depth = 12, wallColor = 'rgba(0,0,0,.18)') {
+  // remove the previous walls
+  document.querySelectorAll('.zone-wall').forEach(e => e.remove());
 
+  [...document.querySelectorAll('#map-content path')].forEach(top => {
+    /* ── build ONE new <path> that encloses   */
+    /*    the top polygon + the shifted bottom */
+    const topPts = pathToVertices(top.getAttribute('d'));
+    const botPts = topPts.map(([x, y]) => [x + depth, y + depth]).reverse();
+
+    const wall = document.createElementNS(svg.namespaceURI, 'path');
+    wall.classList.add('zone-wall');
+    wall.setAttribute('fill', wallColor);
+    wall.setAttribute('pointer-events', 'none');          // never selectable
+    wall.setAttribute('data-for', top.id);                // ← needed by refresh
+    wall.setAttribute(
+      'd',
+      [...topPts, ...botPts]
+        .map((p, i) => (i ? 'L' : 'M') + p[0] + ' ' + p[1])
+        .join(' ') + ' Z'
+    );
+
+    /* IMPORTANT: NO extra translate( … ) here —                      */
+    /* the vertices are already shifted, adding a   transform doubles */
+    /* the offset and makes the wall “float”.                         */
+
+    top.parentNode.insertBefore(wall, top);   // draw under the roof
+  });
+}
+
+function refreshWallFor(zone, depth = 12) {
+  const wall = document.querySelector(`.zone-wall[data-for="${zone.id}"]`);
+  if (!wall) return;
+
+  const topPts = pathToVertices(zone.getAttribute('d'));
+  const botPts = topPts.map(([x, y]) => [x + depth, y + depth]).reverse();
+
+  wall.setAttribute(
+    'd',
+    [...topPts, ...botPts]
+      .map((p, i) => (i ? 'L' : 'M') + p[0] + ' ' + p[1])
+      .join(' ') + ' Z'
+  );
+}
+
+
+extrudeZones(12);
 /********* Selection *********/
 function selectZone(zone) {
   svg.querySelectorAll('path').forEach(z => z.classList.remove('active'));
@@ -464,6 +510,7 @@ function onPointerMove(evt) {
     } else {
       distanceLayer.innerHTML = '';
     }
+    refreshWallFor(currentZone);
   } 
 
   if (dragMode === 'line' && currentLine && currentLine._dots) {
@@ -527,7 +574,7 @@ function onPointerMove(evt) {
 
     currentZone.setAttribute('d', verticesToPath(verts));
     renderHandles(currentZone);
-
+    refreshWallFor(currentZone);
     if (document.getElementById('toggle-distances').checked) {
       renderAllDistances();
     } else {
