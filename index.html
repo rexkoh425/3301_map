@@ -22,11 +22,11 @@
     .handle{fill:#fff;stroke:#2563eb;stroke-width:2;cursor:move}
     .draw-preview{fill:none;stroke:#2563eb;stroke-width:2;stroke-dasharray:6 4}
     .img-trigger{
-    pointer-events:none;
-    transform-origin:center center;
-    transform:scale(0.1);
-    opacity:0;
-    transition:transform 0.4s ease, opacity 0.4s ease;}
+        pointer-events:none;
+        transform-box:fill-box;                 /* ← add */
+        transform:translate(-50%,-50%) scale(0.1);
+        opacity:0;
+        transition:transform 0.4s ease, opacity 0.4s ease;}
     .img-trigger.visible{
       transition:transform 2s ease-in, opacity 2s ease-in;
     }
@@ -597,7 +597,7 @@ function updateImageTriggers(dotX, dotY){
       t.active = true;
       clearTimeout(t.hideTimer);        // cancel a pending hide (if any)
       t.el.style.opacity   = 1;
-      t.el.style.transform = 'scale(1.6)';
+      t.el.style.transform = 'translate(-50%,-50%) scale(1.6)';
     }
 
     /*──── dot LEAVES trigger ────*/
@@ -1197,7 +1197,7 @@ svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
   
   if (imgAddMode && e.button === 0) {
-    const p = svgPoint(e);
+    const p = mapPoint(e);
     const SIZE = 60;
 
     const img = document.createElementNS(svg.namespaceURI,'image');
