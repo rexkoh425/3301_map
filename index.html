@@ -81,6 +81,10 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
   stroke:#111;stroke-width:.9px
 }
 
+.marker-icon{
+  pointer-events:none;     /* 🍰  let the click fall through to the circle */
+}
+
 /* ============  FORM ELEMENTS  ============ */
 input[type=checkbox]{accent-color:var(--accent);margin-right:.42em}
 select{font-size:.95rem;padding:.15rem .35rem}
@@ -239,6 +243,8 @@ const ICONS = [
   { name: 'Lift',      url: 'icons/lift.png'      },
   { name: 'Restroom',  url: 'icons/restroom.png'  },
   { name: 'Info',      url: 'icons/info.png'      },
+  { name: 'Room',      url: 'icons/room.png'      },
+  { name: 'Stairs',      url: 'icons/stairs.png'      },
   // …add as many as you like
 ];
 buildIconPicker();
@@ -271,15 +277,25 @@ function pathToVertices(d){const nums=d.replace(/[MLZmlz]/g,'').trim().split(/[ 
 function verticesToPath(verts){return verts.map((v,i)=>(i?'L':'M')+' '+v[0]+' '+v[1]).join(' ')+' Z';}
 function clearHandles(){handlesLayer.innerHTML='';}
 function renderHandles(el){clearHandles();pathToVertices(el.getAttribute('d')).forEach((v,i)=>{const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',v[0]);c.setAttribute('cy',v[1]);c.setAttribute('r',10);c.classList.add('handle');c.dataset.idx=i;handlesLayer.appendChild(c);c.addEventListener('pointerdown',startVertexDrag);});}
-function deleteZone(){
-  if (!currentZone) return;
+function deleteZone () {
+  if (!currentZone) return;                         // nothing selected
+
+  /* 1️⃣  remove the “wall” that belongs to this zone */
+  const wall = document.querySelector(
+      `.zone-wall[data-for="${currentZone.id}"]`);
+  if (wall) wall.remove();
+
+  /* 2️⃣  remove the top polygon itself */
   currentZone.remove();
   currentZone = null;
-  clearHandles();
-  deleteBtn.disabled = true;
-  setStatus('<em>Select a zone to view details.</em>');
+
+  /* 3️⃣  UI clean-up */
+  clearHandles();                                   // throw away blue handles
+  distanceLayer.innerHTML = '';                     // hide edge lengths
+  deleteBtn.disabled = true;                        // grey-out button
   titleBox.textContent = 'Select or Draw';
-  metaBox.textContent = '';
+  metaBox.textContent  = '';
+  setStatus('<em>Select a zone to view details.</em>');
 }
 function rgbToHex(rgb) {
   const result = rgb.match(/\d+/g);
@@ -1154,6 +1170,7 @@ async function importJSON(file) {
   /* ---------- restore markers ---------- */
   (data.markers || []).forEach(m => {
     const SIZE = MARKER_SIZE;
+    const mid = `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 
     const marker = document.createElementNS(svg.namespaceURI, 'circle');
     marker.setAttribute('cx', m.cx);
@@ -1166,6 +1183,7 @@ async function importJSON(file) {
     marker.dataset.label = m.label;
     marker.dataset.icon  = m.icon || '';
     document.getElementById('markers-layer').appendChild(marker);
+    marker.dataset.mid = mid;
 
     if (m.icon) {
       const img = document.createElementNS(svg.namespaceURI, 'image');
@@ -1175,6 +1193,7 @@ async function importJSON(file) {
       img.setAttribute('width',  SIZE);
       img.setAttribute('height', SIZE);
       img.classList.add('marker-icon');
+      img.dataset.mid = mid
       document.getElementById('markers-layer').appendChild(img);
     }
 
@@ -1184,6 +1203,7 @@ async function importJSON(file) {
     t.setAttribute('font-size', '16');
     t.setAttribute('fill', '#111');
     t.textContent = m.label;
+    t.dataset.mid = mid;
     document.getElementById('markers-layer').appendChild(t);
   });
 
@@ -1353,6 +1373,7 @@ svg.addEventListener('pointerup', (e) => {
   // 🔶 1. Handle placing a marker
   if (markerMode && e.button === 0) {
     const label = prompt("Enter marker label:");
+    const mid = `m-${Date.now()}`;
     if (!label) {
       markerMode = false;
       return;
@@ -1371,6 +1392,7 @@ svg.addEventListener('pointerup', (e) => {
     marker.dataset.label = label;
     marker.classList.add('map-marker');
     marker.dataset.icon  = iconURL;
+    marker.dataset.mid   = mid;
 
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     text.setAttribute('x', pt.x + 20);
@@ -1378,6 +1400,7 @@ svg.addEventListener('pointerup', (e) => {
     text.setAttribute('font-size', '16px');
     text.setAttribute('fill', '#111');
     text.textContent = label;
+    text.dataset.mid   = mid;
 
     document.getElementById('markers-layer').appendChild(marker);
 
@@ -1388,26 +1411,10 @@ svg.addEventListener('pointerup', (e) => {
     img.setAttribute('width',  SIZE);
     img.setAttribute('height', SIZE);
     img.classList.add('marker-icon');       // CSS prevents mouse-grab
+    img.dataset.mid   = mid;
     document.getElementById('markers-layer').appendChild(img);
     document.getElementById('markers-layer').appendChild(text);
 
-    marker.addEventListener('click', () => {
-    if (markerDeleteMode) {
-        marker.remove();
-        text.remove();
-        img.remove();         // Remove associated icon
-        refreshMarkerDropdowns();  // Refresh dropdown list
-      }
-    });
-
-    text.addEventListener('click', () => {
-      if (markerDeleteMode) {
-        marker.remove();
-        text.remove();
-        img.remove();         // Remove associated icon
-        refreshMarkerDropdowns();  // Refresh dropdown list
-      }
-    });
     markerMode = false;
     setStatus('<em>Select a zone to view details.</em>');
     refreshMarkerDropdowns();
@@ -1672,6 +1679,24 @@ function makeTriggerDeletable(img){
     deleteImgTrigger(img.dataset.tid);
   });
 }
+
+const markersLayer = document.getElementById('markers-layer');
+
+/* One listener: remove circle, label AND icon by shared mid */
+markersLayer.addEventListener('click', (e) => {
+  if (!markerDeleteMode) return;
+
+  const circle = e.target.closest('circle.map-marker');
+  if (!circle) return;                 // clicked something else
+
+  const mid = circle.dataset.mid;      // shared id for this marker set
+  markersLayer
+    .querySelectorAll(`[data-mid='${mid}']`)
+    .forEach(el => el.remove());
+
+  refreshMarkerDropdowns();
+});
+
 
 </script>
 </body>
