@@ -68,7 +68,7 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
 
 /* ============  IMAGE TRIGGERS  ============ */
 .img-trigger{
-  pointer-events:none;transform-box:fill-box;
+  transform-box:fill-box;
   transform:translate(-50%,-50%) scale(.12);opacity:0;
   transition:transform .4s ease,opacity .4s ease;
 }
@@ -166,6 +166,8 @@ select{font-size:.95rem;padding:.15rem .35rem}
       <button id="export-paths-btn" class="secondary">Export Paths</button>
       <button id="textbox-btn" class="secondary">Add Text</button>
       <button id="add-img-btn" class="secondary">Add Image Trigger</button>
+      <button id="toggle-invisible"   class="secondary">👁️ Show Hidden Images</button>
+      <button id="delete-img-btn"   class="secondary">Delete Image Trigger</button>
       <input  id="img-file"    type="file" accept="image/*" style="display:none">
       <label style="display:block;margin-top:.25rem">
         Icon:
@@ -210,8 +212,9 @@ let lastSVG = { x: 0, y: 0 };   // last mouse position in SVG coords
 const cx = MARGIN + (MAP_W - 2*MARGIN)/2;
 const cy = MARGIN + (MAP_H - 2*MARGIN)/2;
 
-const MARKER_SIZE   = 800;   // icon bitmap in px
-const MARKER_RADIUS = 12;   // the orange snap circle
+const MARKER_SIZE   = 120;   // icon bitmap in px
+const MARKER_RADIUS = 12;   // the orange snap
+const IMAGE_SIZE = 120
 //
 let zoneCounter = 1 + svg.querySelectorAll('path').length;
 let currentZone = null;
@@ -228,7 +231,9 @@ let markerMode = false;
 const statusMsg = document.getElementById('status-msg');
 let deleteLineMode = false;
 let markerDeleteMode = false;
-let textMode = false;let imgTriggers = [];          // [{x,y,el,active}, …]
+let textMode = false;
+let imgTriggers = [];          // [{x,y,el,active}, …]
+let showInvisible = false;
 let imgAddMode  = false;       // stores {url} while user chooses spot
 const ICONS = [
   { name: 'Lift',      url: 'icons/lift.png'      },
@@ -1206,6 +1211,7 @@ async function importJSON(file) {
     img.setAttribute('width',  I.width);
     img.setAttribute('height', I.height);
     img.classList.add('img-trigger');
+    makeTriggerDeletable(img); 
     document.getElementById('markers-layer').appendChild(img);
 
     imgTriggers.push({
@@ -1296,34 +1302,15 @@ svg.addEventListener('contextmenu',onSvgRightClick);
 svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
   
-  if (imgAddMode && e.button === 0) {
-    const p = mapPoint(e);
-    const SIZE = 60;
+  if (imgAddMode && e.button === 0){
+    const p   = mapPoint(e);                       // SVG coords
+    const img = addImgTrigger(p.x, p.y, imgAddMode.url);
+    img.classList.add('preview');                  // fade-in effect
+    setTimeout(() => img.classList.remove('preview'), 2000);
 
-    const img = document.createElementNS(svg.namespaceURI,'image');
-    img.setAttributeNS(null,'href', imgAddMode.url);
-    const centerX = p.x;
-    const centerY = p.y;
-
-    img.setAttribute('x', centerX - SIZE / 2);
-    img.setAttribute('y', centerY - SIZE / 2);
-    img.setAttribute('width',  SIZE);
-    img.setAttribute('height', SIZE);
-    img.classList.add('img-trigger', 'preview');
-    document.getElementById('markers-layer').appendChild(img);
-
-    imgTriggers.push({
-      x: centerX,  // This is now truly the center
-      y: centerY,
-      el: img,
-      active: false,
-      hideTimer: null
-    });
-
-
-
-    /* remove “preview” style after 2 s */
-    setTimeout(()=>img.classList.remove('preview'), 2000);
+    imgAddMode = false;                            // reset the tool
+    setStatus('<em>Select a zone to view details.</em>');
+    return;                                        // skip rest of handler
   }
 
   if (textMode && e.button === 0) {
@@ -1372,7 +1359,7 @@ svg.addEventListener('pointerup', (e) => {
     }
 
     const iconURL = document.getElementById('marker-icon').value;
-    const SIZE    = 40;
+    const SIZE    = MARKER_SIZE;
 
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     marker.setAttribute('cx', pt.x);
@@ -1597,13 +1584,83 @@ svg.addEventListener("pointercancel", () => {      // capture lost
 });
 
 
+let imgIdCounter = 0;                    // put near the other counters
+
+function addImgTrigger(x, y, url, w = IMAGE_SIZE, h = IMAGE_SIZE){
+  const img = document.createElementNS(svg.namespaceURI, 'image');
+  img.setAttributeNS(null, 'href', url);
+  img.setAttribute('x', x - w / 2);
+  img.setAttribute('y', y - h / 2);
+  img.setAttribute('width',  w);
+  img.setAttribute('height', h);
+  img.classList.add('img-trigger');
+  img.style.pointerEvents = 'auto';      // clickable even if CSS kept
+
+  /* allow deletion while “delete-marker” mode is on */
+  img.addEventListener('click', () => {
+    if (!imgDeleteMode) return;
+    deleteImgTrigger(img.dataset.tid);
+  });
+
+  const id = `img-${++imgIdCounter}`;
+  img.dataset.tid = id;                 // keep id on the element
+  document.getElementById('markers-layer').appendChild(img);
+
+  imgTriggers.push({ id, x, y, el: img, active:false, hideTimer:null });
+  makeTriggerDeletable(img); 
+  refreshImgTriggerList();              // keep drop-down in sync
+  return img;
+}
+
+document.getElementById('toggle-invisible')
+        .addEventListener('click', () => {
+  showInvisible = !showInvisible;
+
+  const btn = document.getElementById('toggle-invisible');
+  btn.textContent = showInvisible
+      ? '🚫 Hide Hidden Images'
+      : '👁️ Show Hidden Images';
+
+  imgTriggers.forEach(t => {
+    if (showInvisible){
+      // always show full-size
+      t.el.style.opacity   = 1;
+      t.el.style.transform = 'translate(-50%,-50%) scale(1)';
+    }else if (!t.active){        // keep the one currently lit up
+      t.el.style.opacity   = 0;
+      t.el.style.transform = 'translate(-50%,-50%) scale(.12)';
+    }
+  });
+});
+
+function deleteImgTrigger(id){
+  const idx = imgTriggers.findIndex(t => t.id === id);
+  if (idx === -1) return false;
+
+  imgTriggers[idx].el.remove();          // remove from DOM
+  imgTriggers.splice(idx, 1);            // remove from registry
+  refreshImgTriggerList();               // update <select>
+  return true;
+}
 
 
+let imgDeleteMode = false;
 
+document.getElementById('delete-img-btn')
+        .addEventListener('click', () => {
+  imgDeleteMode = !imgDeleteMode;
 
-
-
-
+  const btn = document.getElementById('delete-img-btn');
+  btn.textContent = imgDeleteMode
+      ? '✅ Deleting… (click images)'
+      : 'Delete Image Trigger';
+});
+function makeTriggerDeletable(img){
+  img.addEventListener('click', () => {
+    if (!imgDeleteMode) return;
+    deleteImgTrigger(img.dataset.tid);
+  });
+}
 
 </script>
 </body>
