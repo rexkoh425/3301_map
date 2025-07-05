@@ -363,7 +363,7 @@ function highlightPath(labels) {
       return;
     }
     const dot = sequence[idx];
-    dot.setAttribute('fill', '#38bdf8');
+    dot.style.fill = '#38bdf8';
     updateImageTriggers(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
     idx++;
   }, STEP_MS);
@@ -371,7 +371,7 @@ function highlightPath(labels) {
 function clearHighlight() {
   if (pathTimer) { clearInterval(pathTimer); pathTimer = null; }
   document.querySelectorAll('.map-line-dot').forEach(d =>
-    d.setAttribute('fill', '#fff'));
+    d.style.fill = '#fff');
 
   imgTriggers.forEach(t => {
     t.active = false;
@@ -1540,7 +1540,18 @@ document.getElementById('add-img-btn').addEventListener('click', () =>
 document.getElementById('img-file').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-  imgAddMode = { url : URL.createObjectURL(file) };
+
+  /* ------ decide the path you want to write to the SVG ------ */
+  const relPath = `assets/img/${file.name}`;              // <–– your folder
+
+  /* (scope) store it for the upcoming pointer-up */
+  imgAddMode = { url: relPath };
+
+  /* optional – preview the local file so the user sees something
+     before the build process copies it to assets/img/ … */
+  const blobUrl = URL.createObjectURL(file);
+  imgPreview.src = blobUrl;                               // if you have one
+
   setStatus('<strong>Click on the map to place the image</strong>');
 });
 
