@@ -1303,12 +1303,12 @@ svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
   
   if (imgAddMode && e.button === 0){
-    const p   = mapPoint(e);                       // SVG coords
-    const img = addImgTrigger(p.x, p.y, imgAddMode.url);
-    img.classList.add('preview');                  // fade-in effect
-    setTimeout(() => img.classList.remove('preview'), 2000);
-
-    imgAddMode = false;                            // reset the tool
+    const { url } = imgAddMode;        // keep the URL
+    imgAddMode  = false;              // ① turn the mode OFF first
+    const p   = mapPoint(e);           // ② now create the trigger
+    const img = addImgTrigger(p.x, p.y, url);
+    img.classList.add('preview');
+    setTimeout(() => img.classList.remove('preview'), 2000);                     // reset the tool
     setStatus('<em>Select a zone to view details.</em>');
     return;                                        // skip rest of handler
   }
