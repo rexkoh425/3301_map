@@ -1058,75 +1058,78 @@ function applyTransform() {
 }
 
 
-function exportJSON () {
-  /* ---------- zones ---------- */
-  const zones = [...svg.querySelectorAll('path')].map(p => {
+/* ────────────────────────────────────────────────────────── */
+/*  EXPORT the current canvas → download map.json            */
+/* ────────────────────────────────────────────────────────── */
+function exportJSON() {
+
+  /* ===== ZONES  (top polygons only) ===== */
+  const zones = [...svg.querySelectorAll('#map-content path')].map(p => {
     const vertices = pathToVertices(p.getAttribute('d'));
-    const edge_lengths_m = vertices.map((v, i) => {
-      const b = vertices[(i + 1) % vertices.length];
-      return +(Math.hypot(b[0] - v[0], b[1] - v[1]) / PIXELS_PER_METER).toFixed(2);
-    });
     return {
-      id    : p.id,
-      label : p.dataset.label || '',
-      color : p.style.fill || getComputedStyle(p).fill,
+      id      : p.id,
+      label   : p.dataset.label || '',
+      color   : p.style.fill || getComputedStyle(p).fill,
       vertices,
-      edge_lengths_m
+      edge_lengths_m : vertices.map((v,i) => {
+        const b = vertices[(i+1)%vertices.length];
+        return +(Math.hypot(b[0]-v[0], b[1]-v[1]) / PIXELS_PER_METER).toFixed(2);
+      })
     };
   });
 
-  /* ---------- lines ---------- */
-  const lines = [...document.querySelectorAll('#lines-layer line')].map(l => ({
-    id          : l.id,
-    x1          : +l.getAttribute('x1'),
-    y1          : +l.getAttribute('y1'),
-    x2          : +l.getAttribute('x2'),
-    y2          : +l.getAttribute('y2'),
-    stroke      : l.getAttribute('stroke')       || '#000',
-    strokeWidth : +(l.getAttribute('stroke-width') || 3),
-    dots        : (l._dots || []).map(d => ({
-      cx : +d.getAttribute('cx'),
-      cy : +d.getAttribute('cy')
-    }))
+  /* ===== LINES  (ghost line + the visual dots) ===== */
+  const lines = [...document.querySelectorAll('#lines-layer line')].map(ln => ({
+    id          : ln.id,
+    x1          : +ln.getAttribute('x1'),
+    y1          : +ln.getAttribute('y1'),
+    x2          : +ln.getAttribute('x2'),
+    y2          : +ln.getAttribute('y2'),
+    dots        : (ln._dots || []).map(d => ({
+                    cx:+d.getAttribute('cx'), cy:+d.getAttribute('cy') }))
   }));
 
-  /* ---------- markers (visible only) ---------- */
+  /* ===== MARKERS  (orange snap circle + optional icon) ===== */
   const markers = [...document.querySelectorAll('#markers-layer circle.map-marker')]
     .map(c => ({
+      label  : c.dataset.label,
       cx     : +c.getAttribute('cx'),
       cy     : +c.getAttribute('cy'),
-      label  : c.dataset.label || '',
-      radius : +c.getAttribute('r') || 8,
-      icon   : c.dataset.icon  || ''
+      radius : +c.getAttribute('r'),
+      icon   : c.dataset.icon || ''
     }));
 
-  /* ---------- text boxes ---------- */
-  const textboxes = [...document.querySelectorAll('.map-textbox')].map(g => {
+  /* ===== TEXT BOXES ===== */
+  const textboxes = [...document.querySelectorAll('.map-textbox')].map(g=>{
     const t = g.querySelector('text');
-    return { x: +t.getAttribute('x'), y: +t.getAttribute('y'), text: t.textContent };
+    return { x:+t.getAttribute('x'), y:+t.getAttribute('y'), text:t.textContent };
   });
 
-  /* ---------- image triggers ---------- */
-  const images = imgTriggers.map(t => ({
-    x      : t.x,
-    y      : t.y,
-    url    : t.el.getAttribute('href') ||
-             t.el.getAttributeNS('http://www.w3.org/1999/xlink', 'href'),
-    width  : +t.el.getAttribute('width'),
-    height : +t.el.getAttribute('height')
+  /* ===== IMAGE TRIGGERS ===== */
+  const images = imgTriggers.map(tr => ({
+    x      : tr.x,
+    y      : tr.y,
+    url    : tr.el.getAttribute('href') ||
+             tr.el.getAttributeNS('http://www.w3.org/1999/xlink','href'),
+    width  : +tr.el.getAttribute('width'),
+    height : +tr.el.getAttribute('height')
   }));
 
-  /* ---------- editor settings ---------- */
+  /* ===== EDITOR FLAGS ===== */
   const settings = {
-    showLines : document.getElementById('toggle-lines').checked
+    showLines     : document.getElementById('toggle-lines').checked,
+    showDistances : document.getElementById('toggle-distances').checked
   };
 
-  /* ---------- write file ---------- */
-  const data = { zones, lines, markers, textboxes, images, settings };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type : 'application/json' });
-  const a    = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'map.json';
+  /* ===== WRITE FILE ===== */
+  const blob = new Blob(
+      [JSON.stringify({ zones, lines, markers, textboxes, images, settings },
+                      null, 2)],
+      { type:'application/json' });
+  const a = Object.assign(document.createElement('a'), {
+    href : URL.createObjectURL(blob),
+    download : 'map.json'
+  });
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -1134,141 +1137,110 @@ function exportJSON () {
 async function importJSON(file) {
   if (!file) return;
 
-  /* ---------- read file ---------- */
-  const text = await file.text();
   let data;
-  try { data = JSON.parse(text); }
-  catch { return alert('Not a valid JSON map file'); }
+  try { data = JSON.parse(await file.text()); }
+  catch { return alert('⚠️  Not a valid Indoor‑Map file'); }
 
-  /* ---------- wipe current scene ---------- */
-  ['#handles-layer *', '#lines-layer *', '#markers-layer *']
-    .forEach(sel => document.querySelectorAll(sel).forEach(el => el.remove()));
-  svg.querySelectorAll('path').forEach(p => p.remove());
-  imgTriggers.length = 0;                          // clear runtime registry
+  /* —— 0.  hard‑reset the scene —— */
+  ['#handles-layer','#lines-layer','#markers-layer']
+    .forEach(sel => document.querySelector(sel).innerHTML = '');
+  svg.querySelectorAll('#map-content path').forEach(p=>p.remove());
+  imgTriggers.length = 0;
 
-  /* ---------- restore zones ---------- */
-  (data.zones || []).forEach(z => {
-    const p = document.createElementNS(svg.namespaceURI, 'path');
-    p.id = z.id;
-    p.dataset.label = z.label;
-    if (z.color) p.style.fill = z.color;
+  /* —— 1.  ZONES —— */
+  (data.zones||[]).forEach(z=>{
+    const p = document.createElementNS(svg.namespaceURI,'path');
+    p.id = z.id; p.dataset.label = z.label;
+    p.style.fill = z.color;
     p.setAttribute('d', verticesToPath(z.vertices));
     mapContent.insertBefore(p, handlesLayer);
-    p.addEventListener('click',       () => selectZone(p));
+    p.addEventListener('click', ()=>selectZone(p));
     p.addEventListener('pointerdown', startZoneMove);
   });
+  extrudeZones(12);
 
-  /* ---------- restore markers ---------- */
-  (data.markers || []).forEach(m => {
-    const SIZE = MARKER_SIZE;
+  /* —— 2.  MARKERS (+ optional icon + label) —— */
+  (data.markers||[]).forEach(m=>{
     const mid = `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 
-    const marker = document.createElementNS(svg.namespaceURI, 'circle');
-    marker.setAttribute('cx', m.cx);
-    marker.setAttribute('cy', m.cy);
-    marker.setAttribute('r',  m.radius || 10);
-    marker.setAttribute('fill', '#f59e0b');
-    marker.setAttribute('stroke', '#000');
-    marker.setAttribute('stroke-width', 2);
-    marker.classList.add('map-marker');
-    marker.dataset.label = m.label;
-    marker.dataset.icon  = m.icon || '';
-    document.getElementById('markers-layer').appendChild(marker);
-    marker.dataset.mid = mid;
+    const c = document.createElementNS(svg.namespaceURI,'circle');
+    c.classList.add('map-marker');
+    c.dataset.label = m.label; c.dataset.icon = m.icon || '';
+    c.dataset.mid   = mid;
+    c.setAttribute('cx',m.cx); c.setAttribute('cy',m.cy);
+    c.setAttribute('r', m.radius); c.setAttribute('fill','#f59e0b');
+    c.setAttribute('stroke','#000'); c.setAttribute('stroke-width',2);
+    document.getElementById('markers-layer').appendChild(c);
 
-    if (m.icon) {
-      const img = document.createElementNS(svg.namespaceURI, 'image');
-      img.setAttributeNS(null, 'href', m.icon);
-      img.setAttribute('x', m.cx - SIZE/2);
-      img.setAttribute('y', m.cy - SIZE/2);
-      img.setAttribute('width',  SIZE);
-      img.setAttribute('height', SIZE);
-      img.classList.add('marker-icon');
-      img.dataset.mid = mid
+    if (m.icon){
+      const img = document.createElementNS(svg.namespaceURI,'image');
+      img.setAttributeNS(null,'href',m.icon);
+      img.setAttribute('x', m.cx-MARKER_SIZE/2);
+      img.setAttribute('y', m.cy-MARKER_SIZE/2);
+      img.setAttribute('width', MARKER_SIZE);
+      img.setAttribute('height',MARKER_SIZE);
+      img.classList.add('marker-icon'); img.dataset.mid = mid;
       document.getElementById('markers-layer').appendChild(img);
     }
-
-    const t = document.createElementNS(svg.namespaceURI, 'text');
-    t.setAttribute('x', m.cx + 20);
-    t.setAttribute('y', m.cy + 6);
-    t.setAttribute('font-size', '16');
-    t.setAttribute('fill', '#111');
-    t.textContent = m.label;
-    t.dataset.mid = mid;
+    const t = document.createElementNS(svg.namespaceURI,'text');
+    t.textContent = m.label; t.dataset.mid = mid;
+    t.setAttribute('x',m.cx+20); t.setAttribute('y',m.cy+6);
+    t.setAttribute('font-size','16'); t.setAttribute('fill','#111');
     document.getElementById('markers-layer').appendChild(t);
   });
 
-  /* ---------- restore text boxes ---------- */
-  (data.textboxes || []).forEach(tb => {
-    const g = document.createElementNS(svg.namespaceURI, 'g');
+  /* —— 3.  TEXT BOXES —— */
+  (data.textboxes||[]).forEach(tb=>{
+    const g = document.createElementNS(svg.namespaceURI,'g');
     g.classList.add('map-textbox');
-
-    const t = document.createElementNS(svg.namespaceURI, 'text');
-    t.setAttribute('x', tb.x);
-    t.setAttribute('y', tb.y);
-    t.setAttribute('font-size', '16');
-    t.setAttribute('fill', '#111');
+    const t = document.createElementNS(svg.namespaceURI,'text');
     t.textContent = tb.text;
+    t.setAttribute('x',tb.x); t.setAttribute('y',tb.y);
+    t.setAttribute('font-size','16'); t.setAttribute('fill','#111');
     g.appendChild(t);
     document.getElementById('markers-layer').appendChild(g);
   });
 
-  /* ---------- restore image triggers ---------- */
-  (data.images || []).forEach(I => {
-    const img = document.createElementNS(svg.namespaceURI, 'image');
-    img.setAttributeNS(null, 'href', I.url);
-    img.setAttribute('x', I.x - I.width/2);
-    img.setAttribute('y', I.y - I.height/2);
-    img.setAttribute('width',  I.width);
-    img.setAttribute('height', I.height);
-    img.classList.add('img-trigger');
-    makeTriggerDeletable(img); 
-    document.getElementById('markers-layer').appendChild(img);
-
-    imgTriggers.push({
-      x : I.x,
-      y : I.y,
-      el: img,
-      active: false,
-      hideTimer: null
-    });
+  /* —— 4.  IMAGE TRIGGERS —— */
+  (data.images||[]).forEach(I=>{
+    addImgTrigger(I.x, I.y, I.url, I.width, I.height);
   });
 
-  /* ---------- restore lines ---------- */
-  (data.lines || []).forEach(L => {
-    const ghost = document.createElementNS(svg.namespaceURI, 'line');
+  /* —— 5.  LINES  (ghost + dots) —— */
+  (data.lines||[]).forEach(L=>{
+    const ghost = document.createElementNS(svg.namespaceURI,'line');
     ghost.id = L.id;
-    ['x1','y1','x2','y2'].forEach(a => ghost.setAttribute(a, L[a]));
-    ghost.setAttribute('stroke', 'transparent');
-    ghost.setAttribute('stroke-width', 20);
-    ghost.setAttribute('pointer-events', 'stroke');
+    ghost.setAttribute('x1',L.x1); ghost.setAttribute('y1',L.y1);
+    ghost.setAttribute('x2',L.x2); ghost.setAttribute('y2',L.y2);
+    ghost.setAttribute('stroke','transparent');
+    ghost.setAttribute('stroke-width',20);
+    ghost.setAttribute('pointer-events','stroke');
     ghost._dots = [];
     document.getElementById('lines-layer').appendChild(ghost);
 
-    /* dots */
-    (L.dots || []).forEach(({cx,cy}) => {
-      const d = document.createElementNS(svg.namespaceURI, 'circle');
-      d.setAttribute('cx', cx);
-      d.setAttribute('cy', cy);
-      d.setAttribute('r', 6);
-      d.setAttribute('fill', '#fff');
-      d.setAttribute('stroke', '#000');
-      d.setAttribute('stroke-width', 2);
-      d.classList.add('map-line-dot');
-      d.dataset.parentLine = L.id;
+    (L.dots||[]).forEach(({cx,cy})=>{
+      const d = document.createElementNS(svg.namespaceURI,'circle');
+      d.setAttribute('cx',cx); d.setAttribute('cy',cy);
+      d.setAttribute('r',6);   d.setAttribute('fill','#fff');
+      d.setAttribute('stroke','#000'); d.setAttribute('stroke-width',2);
+      d.classList.add('map-line-dot'); d.dataset.parentLine = L.id;
       ghost._dots.push(d);
       document.getElementById('lines-layer').appendChild(d);
     });
 
-    /* endpoint handles */
-    const h1 = createLineHandle(L.x1, L.y1, ghost, 'x1', 'y1');
-    const h2 = createLineHandle(L.x2, L.y2, ghost, 'x2', 'y2');
-    handlesLayer.appendChild(h1);
-    handlesLayer.appendChild(h2);
+    /* middle‑drag whole segment */
+    ghost.addEventListener('pointerdown', e=>{
+      if (e.button!==1) return;
+      e.stopPropagation();
+      dragMode='line'; dragButton=1; currentLine=ghost;
+      startPt = mapPoint(e);
+      ghost.setPointerCapture(e.pointerId);
+    });
   });
 
-  /* ---------- settings ---------- */
-  document.getElementById('toggle-lines').checked = data.settings?.showLines !== false;
+  /* —— 6.  FLAGS —— */
+  document.getElementById('toggle-lines').checked     = !!data.settings?.showLines;
+  document.getElementById('toggle-distances').checked = !!data.settings?.showDistances;
 
   renderAllDistances();
   refreshMarkerDropdowns();
