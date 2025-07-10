@@ -251,7 +251,7 @@ buildIconPicker();
 
 
 //constants
-const CLOSE_THRESHOLD = 40; // pixels
+const CLOSE_THRESHOLD = 20; // pixels
 const PIXELS_PER_METER = 50;
 let pathTimer = null;      // interval id for the animation
 const STEP_MS = 120;       // <-- one dot every 120 ms  (tweak freely)
@@ -613,33 +613,31 @@ function onPointerMove(evt) {
   }
 
   else if (dragMode === 'line-handle' && currentHandle && currentLine) {
-    const p = mapPoint(evt);
 
-    currentHandle.setAttribute('cx', p.x);
-    currentHandle.setAttribute('cy', p.y);
-    currentLine.setAttribute(currentHandle._attrX, p.x);
-    currentLine.setAttribute(currentHandle._attrY, p.y);
+    const raw  = svgPoint(evt);
+   const snap = getNearestSnapPoint(raw);
 
-    // Update dots along the line
-    if (currentLine._dots) {
-      const x1 = parseFloat(currentLine.getAttribute('x1'));
-      const y1 = parseFloat(currentLine.getAttribute('y1'));
-      const x2 = parseFloat(currentLine.getAttribute('x2'));
-      const y2 = parseFloat(currentLine.getAttribute('y2'));
+   currentHandle.setAttribute('cx', snap.x);
+   currentHandle.setAttribute('cy', snap.y);
+   currentLine  .setAttribute(currentHandle._attrX, snap.x);
+   currentLine  .setAttribute(currentHandle._attrY, snap.y);
 
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const dist = Math.hypot(dx, dy);
-      const steps = currentLine._dots.length - 1;
-      const unitX = dx / dist;
-      const unitY = dy / dist;
-      const spacing = dist / steps;
-
-      currentLine._dots.forEach((dot, i) => {
-        dot.setAttribute('cx', x1 + unitX * i * spacing);
-        dot.setAttribute('cy', y1 + unitY * i * spacing);
-      });
-    }
+   // 🟢 now recalc dots with the final snapped endpoints
+   if (currentLine._dots) {
+     const x1 = +currentLine.getAttribute('x1'),
+           y1 = +currentLine.getAttribute('y1'),
+           x2 = +currentLine.getAttribute('x2'),
+           y2 = +currentLine.getAttribute('y2');
+     const dx = x2 - x1,  dy = y2 - y1,
+           dist = Math.hypot(dx, dy),
+           steps = currentLine._dots.length - 1,
+           ux = dx / dist, uy = dy / dist,
+           spacing = dist / steps;
+     currentLine._dots.forEach((d, i) => {
+       d.setAttribute('cx', x1 + ux * i * spacing);
+       d.setAttribute('cy', y1 + uy * i * spacing);
+     });
+   }
   }
 
   else if (dragMode === 'textbox' && currentHandle) {
@@ -658,17 +656,6 @@ function onPointerMove(evt) {
 
     startPt = p;
   }
-
-
-  if (dragMode === 'line-handle' && currentHandle) {
-  const raw = svgPoint(evt);
-  const snap = getNearestSnapPoint(raw);
-
-  currentHandle.setAttribute('cx', snap.x);
-  currentHandle.setAttribute('cy', snap.y);
-  currentLine.setAttribute(currentHandle._attrX, snap.x);
-  currentLine.setAttribute(currentHandle._attrY, snap.y);
-}
 
   if (lineMode && lineStart) {
     const pt = svgPoint(evt);
@@ -892,6 +879,22 @@ function getNearestSnapPoint(pt) {
   let best = null;
   let bestDist = Infinity;
 
+  /* ⏩ 1. markers – if we’re already over one, snap & bail out */
+  const MARKER_LOCK = 18;                   /* px – tweak if you like  */
+  for (const c of document.querySelectorAll('#markers-layer circle')){
+    const x = +c.getAttribute('cx'), y = +c.getAttribute('cy');
+    if (Math.hypot(x - pt.x, y - pt.y) < MARKER_LOCK){
+      return { x, y };                      /* ← nothing else matters */
+    }
+  }
+
+  /* 2.  markers – still highest priority if none inside MARKER_LOCK */
+  document.querySelectorAll('#markers-layer circle').forEach(c => {
+    const x = +c.getAttribute('cx'), y = +c.getAttribute('cy');
+    const d = Math.hypot(x - pt.x, y - pt.y);
+    if (d < bestDist){ bestDist = d; best = { x, y }; }
+  });
+
   /* 1️⃣  vertices of all polygons  */
   svg.querySelectorAll('path').forEach(p => {
     pathToVertices(p.getAttribute('d')).forEach(([x,y]) => {
@@ -914,6 +917,7 @@ function getNearestSnapPoint(pt) {
 
   /* 3️⃣  endpoints *and* whole length of drawn lines  */
   document.querySelectorAll('#lines-layer line').forEach(l => {
+    if (l === currentLine) return;
     const x1 = +l.getAttribute('x1'), y1 = +l.getAttribute('y1');
     const x2 = +l.getAttribute('x2'), y2 = +l.getAttribute('y2');
 
@@ -922,18 +926,6 @@ function getNearestSnapPoint(pt) {
       const d = Math.hypot(x - pt.x, y - pt.y);
       if (d < bestDist) { bestDist = d; best = {x,y}; }
     });
-
-    // whole segment
-    const proj = snapToSegment(pt.x, pt.y, x1, y1, x2, y2);
-    const d    = Math.hypot(proj.x - pt.x, proj.y - pt.y);
-    if (d < bestDist) { bestDist = d; best = proj; }
-  });
-
-  /* 4️⃣  markers  */
-  document.querySelectorAll('#markers-layer circle').forEach(c => {
-    const x = +c.getAttribute('cx'), y = +c.getAttribute('cy');
-    const d = Math.hypot(x - pt.x, y - pt.y);
-    if (d < bestDist) { bestDist = d; best = {x,y}; }
   });
 
   return bestDist < CLOSE_THRESHOLD ? best : pt;
@@ -1426,8 +1418,6 @@ svg.addEventListener('pointerup', (e) => {
   if (!lineMode || dragMode || e.button !== 0) return;
 
   let snapPt = getNearestSnapPoint(pt);
-  const dist = Math.hypot(snapPt.x - pt.x, snapPt.y - pt.y);
-  if (dist > CLOSE_THRESHOLD) snapPt = pt;
 
   if (!lineStart) {
     lineStart = snapPt;
