@@ -704,7 +704,7 @@ function translateLine(el, dx, dy) {
   ['y1','y2'].forEach(a=>el.setAttribute(a, +el.getAttribute(a)+dy));
 }
 function updateImageTriggers(dotX, dotY){
-  const HIT_RADIUS      = 12;   // keep as-is (or enlarge if you like)
+  const HIT_RADIUS      = 40;   // keep as-is (or enlarge if you like)
   const HOLD_MS         = 4000; // ← how long the image must stay visible
 
   imgTriggers.forEach(t => {
