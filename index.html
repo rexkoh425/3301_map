@@ -196,6 +196,11 @@ const distanceLayer = document.getElementById('distance-layer');
 const lineBtn = document.getElementById('line-btn');
 const mapContent = document.getElementById("map-content");
 
+const imgPreview = document.createElementNS(svg.namespaceURI,'image');
+imgPreview.setAttribute('visibility','hidden');      // hidden until needed
+imgPreview.setAttribute('opacity','.7');             // 70 % transparent
+imgPreview.setAttribute('pointer-events','none');    // never steals clicks
+svg.appendChild(imgPreview);
 
 const clip = svg.querySelector("#viewport-clip rect");
 const frame = svg.querySelector("#frame");
@@ -1285,16 +1290,26 @@ svg.addEventListener('contextmenu',onSvgRightClick);
 svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
   
-  if (imgAddMode && e.button === 0){
-    const { url } = imgAddMode;        // keep the URL
-    imgAddMode  = false;              // ① turn the mode OFF first
-    const p   = mapPoint(e);           // ② now create the trigger
+  if (imgAddMode && e.button === 0) {
+    /* ① create the hidden trigger at the cursor position */
+    const { url } = imgAddMode;
+    imgAddMode = false;
+
+    const p   = mapPoint(e);              // centre of the trigger
     const img = addImgTrigger(p.x, p.y, url);
     img.classList.add('preview');
-    setTimeout(() => img.classList.remove('preview'), 2000);                     // reset the tool
+    setTimeout(() => img.classList.remove('preview'), 2000);
+
+    /* ② stop the preview from following the mouse */
+    imgPreview.setAttribute('visibility', 'hidden');
+    svg.removeEventListener('pointermove', imgPreview._follow);
+
+    /* ③ done – reset UI */
     setStatus('<em>Select a zone to view details.</em>');
-    return;                                        // skip rest of handler
+    return;                                // ← keep this so nothing else runs
   }
+
+
 
   if (textMode && e.button === 0) {
     const txt = prompt("Text to display:");
@@ -1403,6 +1418,10 @@ svg.addEventListener('pointerup', (e) => {
     drawLine(lineStart, snapPt);
     lineStart = null;
     linePreview.setAttribute('visibility', 'hidden');
+
+    /* 🔹 leave line‑drawing mode automatically 🔹 */
+    lineMode = false;
+    lineBtn.textContent = 'Add Line';
   }
 });
 svg.addEventListener('contextmenu', (e) => {
@@ -1511,16 +1530,25 @@ document.getElementById('img-file').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
 
-  /* ------ decide the path you want to write to the SVG ------ */
-  const relPath = `assets/img/${file.name}`;              // <–– your folder
+  /* (A)  store the FINAL url that will be written into JSON */
+  const finalURL = `assets/img/${file.name}`;   // adjust to your asset path
+  imgAddMode = { url: finalURL };
 
-  /* (scope) store it for the upcoming pointer-up */
-  imgAddMode = { url: relPath };
+  /* (B)  show a local preview that follows the mouse */
+  const blobURL = URL.createObjectURL(file);
+  imgPreview.setAttributeNS(null,'href', blobURL);
+  imgPreview.setAttribute('width' , IMAGE_SIZE);
+  imgPreview.setAttribute('height', IMAGE_SIZE);
+  imgPreview.setAttribute('visibility','visible');
 
-  /* optional – preview the local file so the user sees something
-     before the build process copies it to assets/img/ … */
-  const blobUrl = URL.createObjectURL(file);
-  imgPreview.src = blobUrl;                               // if you have one
+  /* make preview follow cursor */
+  const follow = evt => {
+    const p = svgPoint(evt);
+    imgPreview.setAttribute('x', p.x - IMAGE_SIZE/2);
+    imgPreview.setAttribute('y', p.y - IMAGE_SIZE/2);
+  };
+  svg.addEventListener('pointermove', follow);
+  imgPreview._follow = follow;          // remember so we can remove later
 
   setStatus('<strong>Click on the map to place the image</strong>');
 });
@@ -1568,6 +1596,8 @@ svg.addEventListener("pointercancel", () => {      // capture lost
 let imgIdCounter = 0;                    // put near the other counters
 
 function addImgTrigger(x, y, url, w = IMAGE_SIZE, h = IMAGE_SIZE){
+  const dup = imgTriggers.find(t => t.x === x && t.y === y && t.url === url);
+  if (dup) return dup.el;
   const img = document.createElementNS(svg.namespaceURI, 'image');
   img.setAttributeNS(null, 'href', url);
   img.setAttribute('x', x - w / 2);
@@ -1637,6 +1667,7 @@ document.getElementById('delete-img-btn')
       : 'Delete Image Trigger';
 });
 function makeTriggerDeletable(img){
+  img.style.pointerEvents = 'auto';
   img.addEventListener('click', () => {
     if (!imgDeleteMode) return;
     deleteImgTrigger(img.dataset.tid);
