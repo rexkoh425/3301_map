@@ -1113,8 +1113,8 @@ function exportJSON () {
 
   /* ==========  IMAGE TRIGGERS  ============================= */
   const images = imgTriggers.map(t => ({
-    x      : t.x,
-    y      : t.y,
+    cx     : t.x,                               // <— store position
+    cy     : t.y,
     url    : t.el.getAttribute('href') ||
              t.el.getAttributeNS('http://www.w3.org/1999/xlink','href'),
     width  : +t.el.getAttribute('width'),
@@ -1125,14 +1125,14 @@ function exportJSON () {
   const settings = {
     showLines      : document.getElementById('toggle-lines').checked,
     showDistances  : document.getElementById('toggle-distances').checked,
-    zoom           : zoom,
-    panX, panY
+    zoom,
+    panX,
+    panY
   };
 
   /* ==========  WRITE FILE  ================================ */
   const blob = new Blob(
-    [JSON.stringify({ zones, lines, markers, textboxes, images, settings },
-                    null, 2)],
+    [JSON.stringify({ zones, lines, markers, textboxes, images, settings }, null, 2)],
     { type: 'application/json' }
   );
   const a = Object.assign(document.createElement('a'), {
@@ -1224,7 +1224,7 @@ async function importJSON (file) {
 
   /* ——— 4. IMAGE TRIGGERS ——— */
   (data.images || []).forEach(I =>
-    addImgTrigger(I.x, I.y, I.url, I.width, I.height));
+    addImgTrigger(I.cx, I.cy, I.url, I.width, I.height));
 
   /* ——— 5. LINES ——— */
   (data.lines || []).forEach(L => {
