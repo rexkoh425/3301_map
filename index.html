@@ -349,7 +349,7 @@ function highlightPath(labels) {
     // reset all triggers
   imgTriggers.forEach(t=>{
     t.active = false;
-    t.el.style.transform = 'scale(0.1)';
+    t.el.style.transform = 'translate(-50%,-50%) scale(.12)';
     t.el.style.opacity   = 0;
   });
 
@@ -397,7 +397,7 @@ function clearHighlight() {
 
   imgTriggers.forEach(t => {
     t.active = false;
-    t.el.style.transform = 'scale(0.1)';
+    t.el.style.transform = 'translate(-50%,-50%) scale(.12)';
     t.el.style.opacity   = 0;
   });
   updateLineVisibility();
@@ -725,7 +725,7 @@ function updateImageTriggers(dotX, dotY){
       /* wait HOLD_MS before hiding – unless dot comes back in the meantime */
       t.hideTimer = setTimeout(()=>{
         if (!t.active){                // dot hasn’t re-entered
-          t.el.style.transform = 'scale(0.1)';
+          t.el.style.transform = 'translate(-50%,-50%) scale(.12)';
           t.el.style.opacity   = 0;
         }
       }, HOLD_MS);
