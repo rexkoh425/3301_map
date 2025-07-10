@@ -200,7 +200,8 @@ const imgPreview = document.createElementNS(svg.namespaceURI,'image');
 imgPreview.setAttribute('visibility','hidden');      // hidden until needed
 imgPreview.setAttribute('opacity','.7');             // 70 % transparent
 imgPreview.setAttribute('pointer-events','none');    // never steals clicks
-svg.appendChild(imgPreview);
+document.getElementById('markers-layer')         /* ⬅ inside map group */
+         .appendChild(imgPreview);
 
 const clip = svg.querySelector("#viewport-clip rect");
 const frame = svg.querySelector("#frame");
@@ -1063,38 +1064,38 @@ function applyTransform() {
 }
 
 
-/* ────────────────────────────────────────────────────────── */
-/*  EXPORT the current canvas → download map.json            */
-/* ────────────────────────────────────────────────────────── */
-function exportJSON() {
+function exportJSON () {
 
-  /* ===== ZONES  (top polygons only) ===== */
+  /* ==========  ZONES  ====================================== */
   const zones = [...svg.querySelectorAll('#map-content path')].map(p => {
     const vertices = pathToVertices(p.getAttribute('d'));
     return {
-      id      : p.id,
-      label   : p.dataset.label || '',
-      color   : p.style.fill || getComputedStyle(p).fill,
+      id     : p.id,
+      label  : p.dataset.label || '',
+      color  : p.style.fill || getComputedStyle(p).fill,
       vertices,
-      edge_lengths_m : vertices.map((v,i) => {
-        const b = vertices[(i+1)%vertices.length];
-        return +(Math.hypot(b[0]-v[0], b[1]-v[1]) / PIXELS_PER_METER).toFixed(2);
+      edge_lengths_m : vertices.map((v, i) => {
+        const b = vertices[(i + 1) % vertices.length];
+        return +(Math.hypot(b[0]-v[0], b[1]-v[1]) / PIXELS_PER_METER)
+                 .toFixed(2);
       })
     };
   });
 
-  /* ===== LINES  (ghost line + the visual dots) ===== */
-  const lines = [...document.querySelectorAll('#lines-layer line')].map(ln => ({
-    id          : ln.id,
-    x1          : +ln.getAttribute('x1'),
-    y1          : +ln.getAttribute('y1'),
-    x2          : +ln.getAttribute('x2'),
-    y2          : +ln.getAttribute('y2'),
-    dots        : (ln._dots || []).map(d => ({
-                    cx:+d.getAttribute('cx'), cy:+d.getAttribute('cy') }))
+  /* ==========  LINES  (ghost line + dots)  ================= */
+  const lines = [...document.querySelectorAll('#lines-layer line')].map(l => ({
+    id   : l.id,
+    x1   : +l.getAttribute('x1'),
+    y1   : +l.getAttribute('y1'),
+    x2   : +l.getAttribute('x2'),
+    y2   : +l.getAttribute('y2'),
+    dots : (l._dots || []).map(d => ({
+             cx : +d.getAttribute('cx'),
+             cy : +d.getAttribute('cy')
+           }))
   }));
 
-  /* ===== MARKERS  (orange snap circle + optional icon) ===== */
+  /* ==========  MARKERS  ==================================== */
   const markers = [...document.querySelectorAll('#markers-layer circle.map-marker')]
     .map(c => ({
       label  : c.dataset.label,
@@ -1104,152 +1105,178 @@ function exportJSON() {
       icon   : c.dataset.icon || ''
     }));
 
-  /* ===== TEXT BOXES ===== */
-  const textboxes = [...document.querySelectorAll('.map-textbox')].map(g=>{
+  /* ==========  TEXT BOXES  ================================= */
+  const textboxes = [...document.querySelectorAll('.map-textbox')].map(g => {
     const t = g.querySelector('text');
     return { x:+t.getAttribute('x'), y:+t.getAttribute('y'), text:t.textContent };
   });
 
-  /* ===== IMAGE TRIGGERS ===== */
-  const images = imgTriggers.map(tr => ({
-    x      : tr.x,
-    y      : tr.y,
-    url    : tr.el.getAttribute('href') ||
-             tr.el.getAttributeNS('http://www.w3.org/1999/xlink','href'),
-    width  : +tr.el.getAttribute('width'),
-    height : +tr.el.getAttribute('height')
+  /* ==========  IMAGE TRIGGERS  ============================= */
+  const images = imgTriggers.map(t => ({
+    x      : t.x,
+    y      : t.y,
+    url    : t.el.getAttribute('href') ||
+             t.el.getAttributeNS('http://www.w3.org/1999/xlink','href'),
+    width  : +t.el.getAttribute('width'),
+    height : +t.el.getAttribute('height')
   }));
 
-  /* ===== EDITOR FLAGS ===== */
+  /* ==========  EDITOR SETTINGS  ============================ */
   const settings = {
-    showLines     : document.getElementById('toggle-lines').checked,
-    showDistances : document.getElementById('toggle-distances').checked
+    showLines      : document.getElementById('toggle-lines').checked,
+    showDistances  : document.getElementById('toggle-distances').checked,
+    zoom           : zoom,
+    panX, panY
   };
 
-  /* ===== WRITE FILE ===== */
+  /* ==========  WRITE FILE  ================================ */
   const blob = new Blob(
-      [JSON.stringify({ zones, lines, markers, textboxes, images, settings },
-                      null, 2)],
-      { type:'application/json' });
+    [JSON.stringify({ zones, lines, markers, textboxes, images, settings },
+                    null, 2)],
+    { type: 'application/json' }
+  );
   const a = Object.assign(document.createElement('a'), {
-    href : URL.createObjectURL(blob),
+    href     : URL.createObjectURL(blob),
     download : 'map.json'
   });
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
-async function importJSON(file) {
+async function importJSON (file) {
   if (!file) return;
 
+  /* ——— read & validate ——— */
   let data;
   try { data = JSON.parse(await file.text()); }
   catch { return alert('⚠️  Not a valid Indoor‑Map file'); }
 
-  /* —— 0.  hard‑reset the scene —— */
-  ['#handles-layer','#lines-layer','#markers-layer']
+  /* ——— 0. hard‑reset the scene ——— */
+  ['#handles-layer', '#lines-layer', '#markers-layer']
     .forEach(sel => document.querySelector(sel).innerHTML = '');
-  svg.querySelectorAll('#map-content path').forEach(p=>p.remove());
+  svg.querySelectorAll('#map-content path').forEach(p => p.remove());
   imgTriggers.length = 0;
 
-  /* —— 1.  ZONES —— */
-  (data.zones||[]).forEach(z=>{
+  /* ——— 1. ZONES ——— */
+  (data.zones || []).forEach(z => {
     const p = document.createElementNS(svg.namespaceURI,'path');
-    p.id = z.id; p.dataset.label = z.label;
+    p.id = z.id;
+    p.dataset.label = z.label;
     p.style.fill = z.color;
     p.setAttribute('d', verticesToPath(z.vertices));
     mapContent.insertBefore(p, handlesLayer);
-    p.addEventListener('click', ()=>selectZone(p));
-    p.addEventListener('pointerdown', startZoneMove);
+    p.addEventListener('click',        () => selectZone(p));
+    p.addEventListener('pointerdown',  startZoneMove);
   });
   extrudeZones(12);
 
-  /* —— 2.  MARKERS (+ optional icon + label) —— */
-  (data.markers||[]).forEach(m=>{
-    const mid = `m-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  /* ——— 2. MARKERS ——— */
+  (data.markers || []).forEach(m => {
+    const mid = `m-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
 
     const c = document.createElementNS(svg.namespaceURI,'circle');
     c.classList.add('map-marker');
-    c.dataset.label = m.label; c.dataset.icon = m.icon || '';
+    c.dataset.label = m.label;
+    c.dataset.icon  = m.icon || '';
     c.dataset.mid   = mid;
-    c.setAttribute('cx',m.cx); c.setAttribute('cy',m.cy);
-    c.setAttribute('r', m.radius); c.setAttribute('fill','#f59e0b');
-    c.setAttribute('stroke','#000'); c.setAttribute('stroke-width',2);
+    Object.entries({ cx:m.cx, cy:m.cy, r:m.radius })
+          .forEach(([a,v]) => c.setAttribute(a,v));
+    c.setAttribute('fill','#f59e0b');
+    c.setAttribute('stroke','#000');
+    c.setAttribute('stroke-width',2);
     document.getElementById('markers-layer').appendChild(c);
 
-    if (m.icon){
-      const img = document.createElementNS(svg.namespaceURI,'image');
-      img.setAttributeNS(null,'href',m.icon);
-      img.setAttribute('x', m.cx-MARKER_SIZE/2);
-      img.setAttribute('y', m.cy-MARKER_SIZE/2);
-      img.setAttribute('width', MARKER_SIZE);
-      img.setAttribute('height',MARKER_SIZE);
-      img.classList.add('marker-icon'); img.dataset.mid = mid;
-      document.getElementById('markers-layer').appendChild(img);
+    if (m.icon) {
+      const i = document.createElementNS(svg.namespaceURI,'image');
+      i.setAttributeNS(null,'href', m.icon);
+      i.setAttribute('x', m.cx - MARKER_SIZE/2);
+      i.setAttribute('y', m.cy - MARKER_SIZE/2);
+      i.setAttribute('width', MARKER_SIZE);
+      i.setAttribute('height',MARKER_SIZE);
+      i.classList.add('marker-icon');
+      i.dataset.mid = mid;
+      document.getElementById('markers-layer').appendChild(i);
     }
+
     const t = document.createElementNS(svg.namespaceURI,'text');
-    t.textContent = m.label; t.dataset.mid = mid;
-    t.setAttribute('x',m.cx+20); t.setAttribute('y',m.cy+6);
-    t.setAttribute('font-size','16'); t.setAttribute('fill','#111');
+    t.textContent = m.label;
+    t.dataset.mid = mid;
+    t.setAttribute('x', m.cx + 20);
+    t.setAttribute('y', m.cy + 6);
+    t.setAttribute('font-size','16');
+    t.setAttribute('fill','#111');
     document.getElementById('markers-layer').appendChild(t);
   });
 
-  /* —— 3.  TEXT BOXES —— */
-  (data.textboxes||[]).forEach(tb=>{
+  /* ——— 3. TEXT BOXES ——— */
+  (data.textboxes || []).forEach(tb => {
     const g = document.createElementNS(svg.namespaceURI,'g');
     g.classList.add('map-textbox');
     const t = document.createElementNS(svg.namespaceURI,'text');
     t.textContent = tb.text;
-    t.setAttribute('x',tb.x); t.setAttribute('y',tb.y);
-    t.setAttribute('font-size','16'); t.setAttribute('fill','#111');
+    t.setAttribute('x', tb.x);
+    t.setAttribute('y', tb.y);
+    t.setAttribute('font-size','16');
+    t.setAttribute('fill','#111');
     g.appendChild(t);
     document.getElementById('markers-layer').appendChild(g);
   });
 
-  /* —— 4.  IMAGE TRIGGERS —— */
-  (data.images||[]).forEach(I=>{
-    addImgTrigger(I.x, I.y, I.url, I.width, I.height);
-  });
+  /* ——— 4. IMAGE TRIGGERS ——— */
+  (data.images || []).forEach(I =>
+    addImgTrigger(I.x, I.y, I.url, I.width, I.height));
 
-  /* —— 5.  LINES  (ghost + dots) —— */
-  (data.lines||[]).forEach(L=>{
+  /* ——— 5. LINES ——— */
+  (data.lines || []).forEach(L => {
     const ghost = document.createElementNS(svg.namespaceURI,'line');
     ghost.id = L.id;
-    ghost.setAttribute('x1',L.x1); ghost.setAttribute('y1',L.y1);
-    ghost.setAttribute('x2',L.x2); ghost.setAttribute('y2',L.y2);
+    Object.entries({ x1:L.x1, y1:L.y1, x2:L.x2, y2:L.y2 })
+          .forEach(([a,v]) => ghost.setAttribute(a,v));
     ghost.setAttribute('stroke','transparent');
     ghost.setAttribute('stroke-width',20);
     ghost.setAttribute('pointer-events','stroke');
     ghost._dots = [];
     document.getElementById('lines-layer').appendChild(ghost);
 
-    (L.dots||[]).forEach(({cx,cy})=>{
+    (L.dots || []).forEach(({cx,cy}) => {
       const d = document.createElementNS(svg.namespaceURI,'circle');
-      d.setAttribute('cx',cx); d.setAttribute('cy',cy);
-      d.setAttribute('r',6);   d.setAttribute('fill','#fff');
-      d.setAttribute('stroke','#000'); d.setAttribute('stroke-width',2);
-      d.classList.add('map-line-dot'); d.dataset.parentLine = L.id;
+      d.setAttribute('cx',cx);
+      d.setAttribute('cy',cy);
+      d.setAttribute('r',6);
+      d.setAttribute('fill','#fff');
+      d.setAttribute('stroke','#000');
+      d.setAttribute('stroke-width',2);
+      d.classList.add('map-line-dot');
+      d.dataset.parentLine = L.id;
       ghost._dots.push(d);
       document.getElementById('lines-layer').appendChild(d);
     });
 
-    /* middle‑drag whole segment */
-    ghost.addEventListener('pointerdown', e=>{
-      if (e.button!==1) return;
+    ghost.addEventListener('pointerdown', e => {
+      if (e.button !== 1) return;
       e.stopPropagation();
-      dragMode='line'; dragButton=1; currentLine=ghost;
-      startPt = mapPoint(e);
+      dragMode   = 'line';
+      dragButton = 1;
+      currentLine = ghost;
+      startPt    = mapPoint(e);
       ghost.setPointerCapture(e.pointerId);
     });
   });
 
-  /* —— 6.  FLAGS —— */
+  /* ——— 6. FLAGS & VIEW ——— */
   document.getElementById('toggle-lines').checked     = !!data.settings?.showLines;
   document.getElementById('toggle-distances').checked = !!data.settings?.showDistances;
 
   renderAllDistances();
   refreshMarkerDropdowns();
   updateLineVisibility();
+
+  /* restore pan / zoom if saved */
+  if (data.settings?.zoom)  zoom  = data.settings.zoom;
+  if (data.settings?.panX)  panX  = data.settings.panX;
+  if (data.settings?.panY)  panY  = data.settings.panY;
+  applyTransform();
+
   setStatus('<em>Map imported successfully.</em>');
 }
 
@@ -1289,27 +1316,6 @@ svg.addEventListener('mousedown',onSvgLeftClick);
 svg.addEventListener('contextmenu',onSvgRightClick);
 svg.addEventListener('pointerup', (e) => {
   const pt = svgPoint(e);
-  
-  if (imgAddMode && e.button === 0) {
-    /* ① create the hidden trigger at the cursor position */
-    const { url } = imgAddMode;
-    imgAddMode = false;
-
-    const p   = mapPoint(e);              // centre of the trigger
-    const img = addImgTrigger(p.x, p.y, url);
-    img.classList.add('preview');
-    setTimeout(() => img.classList.remove('preview'), 2000);
-
-    /* ② stop the preview from following the mouse */
-    imgPreview.setAttribute('visibility', 'hidden');
-    svg.removeEventListener('pointermove', imgPreview._follow);
-
-    /* ③ done – reset UI */
-    setStatus('<em>Select a zone to view details.</em>');
-    return;                                // ← keep this so nothing else runs
-  }
-
-
 
   if (textMode && e.button === 0) {
     const txt = prompt("Text to display:");
@@ -1543,7 +1549,7 @@ document.getElementById('img-file').addEventListener('change', e => {
 
   /* make preview follow cursor */
   const follow = evt => {
-    const p = svgPoint(evt);
+    const p = mapPoint(evt);
     imgPreview.setAttribute('x', p.x - IMAGE_SIZE/2);
     imgPreview.setAttribute('y', p.y - IMAGE_SIZE/2);
   };
@@ -1551,6 +1557,13 @@ document.getElementById('img-file').addEventListener('change', e => {
   imgPreview._follow = follow;          // remember so we can remove later
 
   setStatus('<strong>Click on the map to place the image</strong>');
+  const dropOnce = evt => {
+  if (evt.button !== 0) return;          // left‑click only
+    placeImageTrigger(evt);                // step 2
+    svg.removeEventListener('pointermove', imgPreview._follow); // stop follow
+    svg.removeEventListener('pointerdown', dropOnce);           // self‑clean
+  };
+  svg.addEventListener('pointerdown', dropOnce);
 });
 
 /* ---------- apply geometry constants to the SVG once ---------- */
@@ -1592,7 +1605,26 @@ svg.addEventListener("pointercancel", () => {      // capture lost
   panning = false;
 });
 
+function placeImageTrigger(evt){
+  if (!imgAddMode) return;               // safety guard
 
+  const { url } = imgAddMode;            // final asset path
+  imgAddMode = false;                    // leave add‑mode NOW
+
+  const p = mapPoint(evt);               // SVG coords of the click
+  const img = addImgTrigger(p.x, p.y, url);
+  img.classList.add('preview');          // little “pop” effect
+  setTimeout(() => img.classList.remove('preview'), 2000);
+
+  /* stop and hide the grey preview */
+  svg.removeEventListener('pointermove', imgPreview._follow);
+  imgPreview.setAttribute('visibility','hidden');
+
+  /* hide the thumbnail preview */
+  imgPreview.setAttribute('visibility', 'hidden');
+
+  setStatus('<em>Select a zone to view details.</em>');
+}
 let imgIdCounter = 0;                    // put near the other counters
 
 function addImgTrigger(x, y, url, w = IMAGE_SIZE, h = IMAGE_SIZE){
@@ -1619,7 +1651,6 @@ function addImgTrigger(x, y, url, w = IMAGE_SIZE, h = IMAGE_SIZE){
 
   imgTriggers.push({ id, x, y, el: img, active:false, hideTimer:null });
   makeTriggerDeletable(img); 
-  refreshImgTriggerList();              // keep drop-down in sync
   return img;
 }
 
@@ -1650,7 +1681,6 @@ function deleteImgTrigger(id){
 
   imgTriggers[idx].el.remove();          // remove from DOM
   imgTriggers.splice(idx, 1);            // remove from registry
-  refreshImgTriggerList();               // update <select>
   return true;
 }
 
