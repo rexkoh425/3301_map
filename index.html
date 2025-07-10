@@ -614,7 +614,7 @@ function onPointerMove(evt) {
 
   else if (dragMode === 'line-handle' && currentHandle && currentLine) {
 
-    const raw  = svgPoint(evt);
+   const raw  = svgPoint(evt);
    const snap = getNearestSnapPoint(raw);
 
    currentHandle.setAttribute('cx', snap.x);
@@ -931,39 +931,38 @@ function getNearestSnapPoint(pt) {
   return bestDist < CLOSE_THRESHOLD ? best : pt;
 }
 function buildMarkerGraph() {
-  // key: label  →  { x, y, neighbors: Set<label> }
-  const G = {};
+  const G = {};                                // label → {x, y, neighbors}
 
-  // gather marker nodes
+  /* —— real markers (visible circles) —— */
   document.querySelectorAll('#markers-layer circle').forEach(c => {
-    G[c.dataset.label] = {
+    const lbl = c.dataset.label;
+    if (!lbl) return;                          // skip auto circles, if any
+    G[lbl] = {
       x: +c.getAttribute('cx'),
       y: +c.getAttribute('cy'),
       neighbors: new Set()
     };
   });
 
-  // for every invisible <line> (the ghost line) connect the two markers it touches
+  /* —— every ghost line creates / links two nodes —— */
   document.querySelectorAll('#lines-layer line').forEach(l => {
     const x1 = +l.getAttribute('x1'), y1 = +l.getAttribute('y1');
     const x2 = +l.getAttribute('x2'), y2 = +l.getAttribute('y2');
 
-    // find which marker (if any) sits at each endpoint (within CLOSE_THRESHOLD)
-    const m1 = Object.keys(G).find(lbl =>
-      Math.hypot(G[lbl].x - x1, G[lbl].y - y1) < CLOSE_THRESHOLD);
-    const m2 = Object.keys(G).find(lbl =>
-      Math.hypot(G[lbl].x - x2, G[lbl].y - y2) < CLOSE_THRESHOLD);
+    const n1 = getOrMakeNodeLabel(x1, y1, G);
+    const n2 = getOrMakeNodeLabel(x2, y2, G);
 
-    if (m1 && m2) {
-      G[m1].neighbors.add(m2);
-      G[m2].neighbors.add(m1);
-      // store the line element on both nodes for quick highlighting later
-      l._markers = [m1, m2];
-    }
+    if (n1 === n2) return;                     // zero‑length after snap
+    G[n1].neighbors.add(n2);
+    G[n2].neighbors.add(n1);
+
+    // store for highlightPath()
+    l._markers = [n1, n2];
   });
 
   return G;
 }
+
 function shortestPath(startLbl, endLbl) {
   const G = buildMarkerGraph();
   if (!G[startLbl] || !G[endLbl]) return null;
@@ -1418,6 +1417,8 @@ svg.addEventListener('pointerup', (e) => {
   if (!lineMode || dragMode || e.button !== 0) return;
 
   let snapPt = getNearestSnapPoint(pt);
+  const dist = Math.hypot(snapPt.x - pt.x, snapPt.y - pt.y);
+  if (dist > CLOSE_THRESHOLD) snapPt = pt;   // keep your old guard
 
   if (!lineStart) {
     lineStart = snapPt;
@@ -1686,6 +1687,22 @@ markersLayer.addEventListener('click', (e) => {
 
   refreshMarkerDropdowns();
 });
+
+/* ── auto nodes for rogue line‑endpoints ───────────────────────── */
+const AUTO_NODE_PREFIX = 'P';   // will make labels  P1, P2, P3…
+let   autoNodeCounter  = 0;
+
+function getOrMakeNodeLabel(x, y, G) {
+  // is there already a node here?
+  for (const lbl in G) {
+    if (Math.hypot(G[lbl].x - x, G[lbl].y - y) < CLOSE_THRESHOLD)
+      return lbl;
+  }
+  // none ‑► create a synthetic one
+  const lbl = `${AUTO_NODE_PREFIX}${++autoNodeCounter}`;
+  G[lbl] = { x, y, neighbors: new Set() };
+  return lbl;
+}
 
 
 </script>
