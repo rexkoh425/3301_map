@@ -1111,15 +1111,20 @@ function exportJSON () {
     return { x:+t.getAttribute('x'), y:+t.getAttribute('y'), text:t.textContent };
   });
 
-  /* ==========  IMAGE TRIGGERS  ============================= */
-  const images = imgTriggers.map(t => ({
-    cx     : t.x,                               // <— store position
-    cy     : t.y,
-    url    : t.el.getAttribute('href') ||
-             t.el.getAttributeNS('http://www.w3.org/1999/xlink','href'),
-    width  : +t.el.getAttribute('width'),
-    height : +t.el.getAttribute('height')
-  }));
+  const images = imgTriggers.map(t => {
+    const el = t.el;
+    const url = el.getAttribute('href') ||
+                el.href?.baseVal || // Works in modern browsers
+                el.getAttributeNS('http://www.w3.org/1999/xlink', 'href') || '';
+
+    return {
+      cx     : t.x,
+      cy     : t.y,
+      url    : url,
+      width  : +el.getAttribute('width'),
+      height : +el.getAttribute('height')
+    };
+  });
 
   /* ==========  EDITOR SETTINGS  ============================ */
   const settings = {
@@ -1631,7 +1636,7 @@ function addImgTrigger(x, y, url, w = IMAGE_SIZE, h = IMAGE_SIZE){
   const dup = imgTriggers.find(t => t.x === x && t.y === y && t.url === url);
   if (dup) return dup.el;
   const img = document.createElementNS(svg.namespaceURI, 'image');
-  img.setAttributeNS(null, 'href', url);
+  img.setAttribute('href', url);
   img.setAttribute('x', x - w / 2);
   img.setAttribute('y', y - h / 2);
   img.setAttribute('width',  w);
