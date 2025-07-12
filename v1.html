@@ -6,7 +6,6 @@
   <title>Indoor Map Editor – Export Vertices JSON</title>
 <style>
 /* ============  DESIGN TOKENS  ============ */
-#map-content{transition:transform .35s cubic-bezier(.33,1,.68,1);}
 :root{
   --accent          : #2563eb;
   --accent-dark     : #1e40af;
@@ -360,11 +359,6 @@ function rgbToHex(rgb) {
       .join('')
   );
 }
-function centerOn(x, y){
-  panX = - zoom * (x - cx);        // (cx, cy) are viewport mid-points
-  panY = - zoom * (y - cy);
-  applyTransform();
-}
 function renderAllDistances() {
   distanceLayer.innerHTML = ''; // Clear all existing
 
@@ -428,10 +422,6 @@ function highlightPath(labels, leadIn = DEFAULT_LEAD_IN) {
   /* 3 ▸ make sure dots are visible */
   sequence.forEach(d => d.style.display = 'inline');
 
-  if (sequence.length){
-    const d0 = sequence[0];
-    centerOn(+d0.getAttribute('cx'), +d0.getAttribute('cy'));
-  }
   /* 4 ▸ start animating *after* the lead-in delay */
   setTimeout(() => {
     let idx = 0;
@@ -444,7 +434,6 @@ function highlightPath(labels, leadIn = DEFAULT_LEAD_IN) {
       const dot = sequence[idx];
       dot.style.fill = '#38bdf8';
       updateImageTriggers(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
-      centerOn(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
       idx++;
     }, STEP_MS);
   }, leadIn);
@@ -1815,9 +1804,9 @@ function importJSONData(data){
   updateLineVisibility();
 
   /* restore pan / zoom if saved */
-  zoom  = 2.0;          // 100 % – no accidental zoom-in
-  panX  = 0;          // centred
-  panY  = 0;
+  if (data.settings?.zoom) zoom = data.settings.zoom;
+  if (data.settings?.panX) panX = data.settings.panX;
+  if (data.settings?.panY) panY = data.settings.panY;
   applyTransform();
 
   setStatus('<em>Map imported successfully.</em>');
