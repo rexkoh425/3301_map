@@ -44,6 +44,31 @@ button.secondary:hover{background:#6b7280}
   transform:skewX(calc(var(--iso-angle)*-1)) translateY(-40px) scale(1.05);
   transition:transform .6s cubic-bezier(.25,.8,.25,1);
 }
+/* === sidebar toggle button === */
+#sidebar-toggle{
+  all:unset;           /* strip browser defaults */
+  cursor:pointer;
+  font-size:1.4rem;
+  line-height:1;
+  margin-left:auto;    /* push to the right edge of header */
+  padding:.2rem .4rem;
+  border-radius:.4rem;
+}
+#sidebar-toggle:hover{background:rgba(255,255,255,.15)}
+
+/* === collapsed sidebar === */
+body.sidebar-collapsed #sidebar{
+  width:0 !important;
+  min-width:0;
+  border:none;
+  overflow:hidden;
+  transition:width .25s;
+}
+body.sidebar-collapsed #sidebar *{                 /* hide inner content */
+  opacity:0; pointer-events:none;
+}
+body.sidebar-collapsed #canvas{flex:1 1 100%}      /* map fills space */
+
 
 /* ============  ZONES (paths)  ============ */
 svg path{
@@ -85,6 +110,24 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
   pointer-events:none;     /* 🍰  let the click fall through to the circle */
 }
 
+#sidebar-float-btn{
+  position:fixed;           /* stays put while you scroll / pan */
+  top:1rem;
+  left:1rem;
+  z-index:1000;             /* above the SVG */
+  font-size:1.6rem;
+  padding:.25rem .5rem;
+  border:none;
+  border-radius:.4rem;
+  background:var(--accent);
+  color:#fff;
+  cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,.25);
+  transition:background .2s;
+}
+#sidebar-float-btn:hover{background:var(--accent-dark)}
+
+
 /* ============  FORM ELEMENTS  ============ */
 input[type=checkbox]{accent-color:var(--accent);margin-right:.42em}
 select{font-size:.95rem;padding:.15rem .35rem}
@@ -97,6 +140,7 @@ select{font-size:.95rem;padding:.15rem .35rem}
 <body>
 <div id="app">
   <div id="canvas">
+    <button id="sidebar-float-btn" title="Show / hide sidebar">☰</button>
     <svg id="map-svg" viewBox="0 0 ${MAP_W} ${MAP_H}" width="90%" height="90%" preserveAspectRatio="xMidYMid meet">
       <rect id="frame" x="${MARGIN}" y="${MARGIN}" width="${MAP_W - 2*MARGIN}" height="${MAP_H - 2*MARGIN}" fill="#f9fafb" stroke="#9ca3af" stroke-width="4"/>
       <clipPath id="viewport-clip" clipPathUnits="userSpaceOnUse">
@@ -123,6 +167,7 @@ select{font-size:.95rem;padding:.15rem .35rem}
   <aside id="sidebar">
     <header>
       <h2 id="zone-title">Select or Draw</h2>
+      <button id="sidebar-toggle" title="Hide / Show sidebar">☰</button>
       <p id="zone-meta" style="margin:0;font-size:.9rem;opacity:.85">
         Left‑click to add vertices, <strong>right‑click to finish</strong>.
       </p>
@@ -232,6 +277,7 @@ let dragMode=null; // move | vertex | draw | null
 let dragButton = null;
 let activeHandleIdx=-1; let startPt=null; let originalD=''; let drawVerts=[];
 let lineMode = false;
+const DEFAULT_LEAD_IN = 5000;
 let lineStart = null;
 const linePreview = document.getElementById('line-preview');
 let currentLine = null;
@@ -342,29 +388,28 @@ function renderAllDistances() {
     }
   });
 }
-function highlightPath(labels) {
+function highlightPath(labels, leadIn = DEFAULT_LEAD_IN) {
   clearHighlight();
   if (!labels || labels.length < 2) return;
 
-    // reset all triggers
-  imgTriggers.forEach(t=>{
+  /* 1 ▸ reset all image triggers */
+  imgTriggers.forEach(t => {
     t.active = false;
     t.el.style.transform = 'translate(-50%,-50%) scale(.12)';
     t.el.style.opacity   = 0;
   });
 
+  /* 2 ▸ collect every dot along the route in drawing order */
   const sequence = [];
   const allLines = [...document.querySelectorAll('#lines-layer line')];
 
   for (let i = 0; i < labels.length - 1; i++) {
     const F = labels[i], T = labels[i + 1];
-
     const match = allLines.find(l =>
       l._markers &&
       ((l._markers[0] === F && l._markers[1] === T) ||
        (l._markers[0] === T && l._markers[1] === F))
     );
-
     if (match) {
       const orderedDots = (match._markers[0] === F)
         ? match._dots
@@ -372,23 +417,26 @@ function highlightPath(labels) {
       sequence.push(...orderedDots);
     }
   }
-
   if (!sequence.length) return;
 
+  /* 3 ▸ make sure dots are visible */
   sequence.forEach(d => d.style.display = 'inline');
 
-  let idx = 0;
-  pathTimer = setInterval(() => {
-    if (idx >= sequence.length) {
-      clearInterval(pathTimer);
-      pathTimer = null;
-      return;
-    }
-    const dot = sequence[idx];
-    dot.style.fill = '#38bdf8';
-    updateImageTriggers(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
-    idx++;
-  }, STEP_MS);
+  /* 4 ▸ start animating *after* the lead-in delay */
+  setTimeout(() => {
+    let idx = 0;
+    pathTimer = setInterval(() => {
+      if (idx >= sequence.length) {
+        clearInterval(pathTimer);
+        pathTimer = null;
+        return;
+      }
+      const dot = sequence[idx];
+      dot.style.fill = '#38bdf8';
+      updateImageTriggers(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
+      idx++;
+    }, STEP_MS);
+  }, leadIn);
 }
 function clearHighlight() {
   if (pathTimer) { clearInterval(pathTimer); pathTimer = null; }
@@ -1741,6 +1789,15 @@ function getOrMakeNodeLabel(x, y, G) {
   G[lbl] = { x, y, neighbors: new Set() };
   return lbl;
 }
+
+document.getElementById('sidebar-toggle')
+        .addEventListener('click', () => {
+  document.body.classList.toggle('sidebar-collapsed');
+});
+document.getElementById('sidebar-float-btn')
+        .addEventListener('click', () => {
+  document.body.classList.toggle('sidebar-collapsed');
+});
 
 
 </script>
