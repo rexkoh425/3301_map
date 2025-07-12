@@ -177,7 +177,7 @@ select{font-size:.95rem;padding:.15rem .35rem}
     <section id="zone-info">
       <div style="margin-top:.5rem;">
         <label>
-          <input type="checkbox" id="toggle-lines" checked>
+          <input type="checkbox" id="toggle-lines">
           Show drawn lines
         </label>
       </div>
@@ -301,7 +301,7 @@ const ICONS = [
   // …add as many as you like
 ];
 buildIconPicker();
-
+updateLineVisibility()
 
 //constants
 const CLOSE_THRESHOLD = 20; // pixels
@@ -1328,7 +1328,7 @@ async function importJSON (file) {
   });
 
   /* ——— 6. FLAGS & VIEW ——— */
-  document.getElementById('toggle-lines').checked     = !!data.settings?.showLines;
+  document.getElementById('toggle-lines').checked     = false;
   const showDist = !!data.settings?.showDistances;
   document.getElementById('toggle-distances').checked = showDist;
 
@@ -1805,7 +1805,7 @@ function importJSONData(data){
   });
 
   /* ——— 6. FLAGS & VIEW ——— */
-  document.getElementById('toggle-lines').checked     = !!data.settings?.showLines;
+  document.getElementById('toggle-lines').checked     = false;
   const showDist = !!data.settings?.showDistances;
   document.getElementById('toggle-distances').checked = showDist;
 
