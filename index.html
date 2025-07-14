@@ -133,6 +133,12 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
 input[type=checkbox]{accent-color:var(--accent);margin-right:.42em}
 select{font-size:.95rem;padding:.15rem .35rem}
 #sidebar hr{border:none;height:1px;background:var(--border-neutral);margin:.9rem 0 1.2rem}
+@supports (-webkit-touch-callout: none) {   /* matches ONLY WebKit */
+  svg path,
+  .map-line-dot {
+    filter:none !important;   /* stop using the unavailable filter */
+  }
+}
 </style>
 
 
