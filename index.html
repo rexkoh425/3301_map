@@ -130,9 +130,11 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
   pointer-events:none;     /* 🍰  let the click fall through to the circle */
 }
 
-#map-wrapper{
-  position:relative;   /* establishes the containing block */
-  display:inline-block;/* shrink-wrap exactly around the SVG */
+#map-wrapper {
+  position: relative;
+  display: inline-block;  /* makes wrapper hug the SVG size */
+  width: fit-content;     /* ensures it doesn't stretch */
+  max-width: 100%;
 }
 
 #sidebar-float-btn{
@@ -172,7 +174,7 @@ select{font-size:.95rem;padding:.15rem .35rem}
 <div id="app">
   <div id="canvas">
     <button id="sidebar-float-btn" title="Show / hide sidebar">☰</button>
-    <div id="map-wrapper"></div>
+    <div id="map-wrapper">
       <svg id="map-svg" viewBox="0 0 ${MAP_W} ${MAP_H}" width="90%" height="90%" preserveAspectRatio="xMidYMid meet">
         <rect id="frame" x="${MARGIN}" y="${MARGIN}" width="${MAP_W - 2*MARGIN}" height="${MAP_H - 2*MARGIN}" fill="#f9fafb" stroke="#9ca3af" stroke-width="4"/>
         <clipPath id="viewport-clip" clipPathUnits="userSpaceOnUse">
