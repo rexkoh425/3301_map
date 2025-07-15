@@ -18,15 +18,15 @@
 }
 #map-name{
   position:absolute;
-  right:1rem;          /* ⬅ bottom-right corner */
-  bottom:1rem;
+  right:calc(1rem - 5px);   /* ⬅ moved 100px to the right */
+  bottom:calc(1rem - 5px);  /* ⬅ moved 100px downwards */
   font-size:1rem;
   font-weight:600;
   background:rgba(255,255,255,.85);
   padding:.25rem .65rem;
   border-radius:.5rem;
   box-shadow:0 2px 6px rgba(0,0,0,.15);
-  cursor:pointer;      /* click to rename */
+  cursor:pointer;
 }
 /* ============  APP LAYOUT  ============ */
 html,body{margin:0;height:100%;font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--text-primary);background:#fff}
