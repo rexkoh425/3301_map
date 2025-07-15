@@ -130,11 +130,9 @@ svg path.active{transform:translateY(-6px);filter:url(#isoZoneActive)}
   pointer-events:none;     /* 🍰  let the click fall through to the circle */
 }
 
-#map-wrapper {
-  position: relative;
-  display: inline-block;  /* makes wrapper hug the SVG size */
-  width: fit-content;     /* ensures it doesn't stretch */
-  max-width: 100%;
+#map-wrapper{
+  position:relative;   /* establishes the containing block */
+  display:inline-block;/* shrink-wrap exactly around the SVG */
 }
 
 #sidebar-float-btn{
